@@ -1,0 +1,44 @@
+# =====================================================================
+# CI 环境专用配置（被 GitHub Actions 使用）
+#   - LLM 用 DeepSeek 云端：Ollama 在内网，CI runner 访问不到
+#   - api_key 从 GitHub Secrets 注入：${{ secrets.DEEPSEEK_API_KEY }}
+#   - 节流降到最小：CI 不需要为内网网关限流预留间隔
+#   - headless 强制 true
+#   - auto_observe 开：CI 场景 agent 需要多一次快照确认状态
+# =====================================================================
+
+llm:
+  provider: deepseek
+  model: deepseek-chat
+  base_url: https://api.deepseek.com/v1
+  # api_key 不写 → config.py 的优先级链会从环境变量取 STAGENT_API_KEY / OPENAI_API_KEY
+  # CI workflow 里 env: DEEPSEEK_API_KEY=${{ secrets.DEEPSEEK_API_KEY }} 只需要再 export STAGENT_API_KEY
+  # 或者直接在 config.ci.example.yaml 里写 api_key: "sk-xxx"（不要提交，只本地用）
+  api_key: ""
+  temperature: 0.2
+  max_tokens: 4096
+  timeout_s: 240
+  # 节流降到最小：CI 不经过内网网关
+  min_interval_s: 0
+  max_attempts: 3
+  base_delay_s: 1.0
+  max_delay_s: 10.0
+
+browser:
+  command: ""
+  args:
+    - "@playwright/mcp@latest"
+  headless: true
+  output_dir: artifacts/screens
+  startup_timeout_s: 120
+  tool_timeout_s: 60
+  extra_args:
+    - "--browser=chromium"
+
+agent:
+  max_steps: 40
+  heal_attempts: 2
+  # CI 开 auto_observe：agent 需要多一次快照确认页面变化
+  auto_observe: true
+  tool_result_char_limit: 6000
+  screenshot_each_step: true

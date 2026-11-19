@@ -1,0 +1,7 @@
+# TestAgent stagent Python 依赖
+# 运行时只依赖三个第三方包，其余全是标准库
+# CI 和本地都用 pip install -r requirements.txt 一键装完
+
+pyyaml>=6.0,<7.0
+openai>=1.40.0,<2.0
+mcp>=1.0.0,<2.0

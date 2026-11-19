@@ -1,0 +1,66 @@
+# Saucedemo 真实账号字典（https://www.saucedemo.com/）
+# 用例文件里用 data_from: saucedemo_users.yaml 即可整体合并，或在 case.data_from 单独引用
+#
+# 用法示例：
+#   data_from: saucedemo_users.yaml
+#   cases:
+#     - name: locked_out 用户无法登录
+#       data:
+#         username: "{{users.locked_out.username}}"
+#         password: "{{users.locked_out.password}}"
+#       instruction: |
+#         用 {{username}} / {{password}} 登录，预期被锁
+#
+# 简写方式也支持（顶层直接挂 users.*）
+users:
+  standard_user:
+    username: standard_user
+    password: secret_sauce
+    note: 标准账号，正常走完所有用例
+    tags: [happy_path, smoke]
+
+  problem_user:
+    username: problem_user
+    password: secret_sauce
+    note: 商品图片随机错乱、Add to cart 按钮有时不工作——典型"前端有问题"账号
+    tags: [frontend_bug, visual]
+
+  visual_user:
+    username: visual_user
+    password: secret_sauce
+    note: 视觉回归账号，布局/CSS/diff 专用
+    tags: [visual_regression]
+
+  locked_out_user:
+    username: locked_out_user
+    password: secret_sauce
+    note: 账号被锁，任何情况都登录不了；页面应报错，URL 不应跳转
+    tags: [error_path, auth]
+
+  performance_glitch_user:
+    username: performance_glitch_user
+    password: secret_sauce
+    note: 所有操作变慢 ~3s / 步——性能/超时测试专用
+    tags: [performance]
+
+  error_user:
+    username: error_user
+    password: secret_sauce
+    note: 页面交互随机报错（Checkout 环节）
+    tags: [error_path]
+
+standard_username: standard_user
+standard_password: secret_sauce
+
+# 场景快引用（给 {{users.xxx.username}} 的简写，也支持 {{locked_out_username}}）
+locked_out_username: locked_out_user
+locked_out_password: secret_sauce
+
+problem_username: problem_user
+problem_password: secret_sauce
+
+visual_username: visual_user
+visual_password: secret_sauce
+
+performance_username: performance_glitch_user
+performance_password: secret_sauce

@@ -1,0 +1,186 @@
+# Demo: 购物车 → 结算 → 下单全链路（含参数化用户：standard / problem / visual / locked_out）
+# 公开 Saucedemo 站点，直接跑。跑法：python -m stagent run suites/demo_checkout.yaml
+
+name: 购物车结算全链路 Demo
+
+base_url: https://www.saucedemo.com/
+
+data_from: saucedemo_users.yaml
+
+data:
+  app_url: https://www.saucedemo.com/
+  # 结算填写
+  checkout_first_name: John
+  checkout_last_name: Doe
+  checkout_zip: "10000"
+
+cases:
+  # =============== 标准账号 ===============
+  - name: "[standard] 加入购物车 → 结算 → 下单成功"
+    url: "{{app_url}}"
+    data:
+      username: "{{standard_username}}"
+      password: "{{standard_password}}"
+    instruction: |
+      用 {{username}} / {{password}} 登录后加两件商品到购物车，走完整结算流程到下单成功页。
+
+      步骤（逐步做，做完一步看页面再下一步）：
+      1. 打开 {{app_url}}，填入 {{username}} / {{password}} 登录，确认 URL 跳到 /inventory.html
+      2. 点 "Sauce Labs Backpack" 的 Add to cart 按钮一次
+      3. 点 "Sauce Labs Bolt T-Shirt" 的 Add to cart 按钮一次
+      4. 点页面右上角的购物车图标进入购物车页
+      5. 点 Checkout，填 First Name "{{checkout_first_name}}"、Last Name "{{checkout_last_name}}"、ZIP "{{checkout_zip}}"，点 Continue
+      6. 点 Finish，确认页面出现 "Thank you for your order"
+      7. 每步关键操作后截图
+
+      注意：
+      - 购物车图标是购物车形状的按钮/链接，在页面右上角，不要点汉堡菜单
+      - 一次只做一个动作，做完看页面再下一步
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "购物车页显示两件商品（Sauce Labs Backpack 和 Sauce Labs Bolt T-Shirt）"
+      - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
+    timeout_s: 600
+
+  - name: "[standard] 空购物车 Checkout 进入结算页但不应能下单"
+    url: "{{app_url}}"
+    data:
+      username: "{{standard_username}}"
+      password: "{{standard_password}}"
+    instruction: |
+      验证空购物车时的结算行为。
+
+      步骤：
+      1. 用 {{username}} / {{password}} 登录
+      2. 直接进购物车页（不点 Add to cart），确认购物车是空的
+      3. 点 Checkout，填 First Name "{{checkout_first_name}}"、Last Name "{{checkout_last_name}}"、ZIP "{{checkout_zip}}"，点 Continue
+      4. 观察结算汇总页（checkout-step-two.html）的商品区域状态
+      5. 截图留证
+    assertions:
+      - "购物车页为空（没有 cart_item 商品条目）"
+      - "结算汇总页显示没有商品（subtotal 为 $0.00 或商品列表为空）"
+    timeout_s: 600
+
+  # =============== Problem 用户（前端 bug） ===============
+  - name: "[problem_user] 购物车流程应能完成但图片/按钮可能异常"
+    url: "{{app_url}}"
+    data:
+      username: "{{problem_username}}"
+      password: "{{problem_password}}"
+    instruction: |
+      用 {{username}} / {{password}} 登录，执行完整结算流程，观察是否有图片错乱或 Add to cart 按钮偶发失效。
+
+      步骤：
+      1. 打开 {{app_url}}，填 {{username}} / {{password}} 登录
+      2. 进入商品页后，观察商品图片是否正常加载
+      3. 尝试给 "Sauce Labs Backpack" 加购（若按钮失效，换相邻商品或重试）
+      4. 进购物车 → Checkout，填 "{{checkout_first_name}}" / "{{checkout_last_name}}" / "{{checkout_zip}}"
+      5. Finish 下单
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
+    timeout_s: 900
+    max_steps: 80
+    expected_fail: true
+    expected_fail_reason: "problem_user 的 Checkout 表单有前端 bug：browser_fill_form 失效 + Continue 按钮会清掉 Last Name 值（20261118 真实全量跑发现）"
+
+  # =============== Locked out 用户（被锁） ===============
+  - name: "[locked_out] 账号应被拒绝登录"
+    url: "{{app_url}}"
+    data:
+      username: "{{locked_out_username}}"
+      password: "{{locked_out_password}}"
+    instruction: |
+      验证 {{username}} 账号被锁住，登录请求应被拒绝。
+
+      步骤：
+      1. 打开 {{app_url}}
+      2. 填 {{username}} / {{password}}
+      3. 点击登录
+      4. 停留在当前页，阅读错误文案并截图
+    assertions:
+      - "页面出现 Epic sadface 或包含 locked / Locked out 之类提示"
+      - "URL 停留在登录页，没有跳到 /inventory.html"
+
+  # =============== Error 用户（Checkout 环节随机报错） ===============
+  - name: "[error_user] Checkout 环节会随机报错，观察自愈能力"
+    url: "{{app_url}}"
+    data:
+      username: "{{error_username}}"
+      password: "{{error_password}}"
+    instruction: |
+      用 {{username}} / {{password}} 登录后加一件商品，走结算流程到完成页。
+      预期：error_user 在 Checkout 环节会抛各种前端错误（可能是 First Name required / 页面元素异常），
+      agent 需要自己看页面、发现错误、重试或切换策略。
+
+      步骤（遇到错误先读页面再重试）：
+      1. 打开 {{app_url}}，填 {{username}} / {{password}} 登录，确认 URL 跳到 /inventory.html
+      2. 给 Sauce Labs Backpack 加购一次
+      3. 进购物车 → Checkout，填 First Name "{{checkout_first_name}}"、Last Name "{{checkout_last_name}}"、ZIP "{{checkout_zip}}"，点 Continue
+      4. 如果 Continue 后报表单错误，读错误文案，根据提示修正字段（可能需要清掉重新填或逐字输入）
+      5. Finish 下单，确认到达 Thank you for your order
+      6. 每步关键操作后截图
+
+      注意：
+      - 遇到错误不要跳过，要读页面提示再修正
+      - 同一表单字段如果 browser_fill_form 填不进去，换成逐字 type
+      - 继续重试不同方式直到成功或确实无法推进
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
+    timeout_s: 900
+    max_steps: 80
+    expected_fail: true
+    expected_fail_reason: "error_user 在 Checkout 环节会随机抛前端错误（已知的 Saucedemo bug 账号），agent 可能需要多轮重试才能走通——这条 case 用来探测 error_user 的具体 bug 表现，不是失败"
+
+  # =============== Performance glitch 用户（所有操作变慢 ~3s） ===============
+  - name: "[performance_user] 操作普遍变慢，验证 agent 对慢响应的韧性"
+    url: "{{app_url}}"
+    data:
+      username: "{{performance_username}}"
+      password: "{{performance_password}}"
+    instruction: |
+      用 {{username}} / {{password}} 登录后加购结算。预期：所有页面操作都会变慢 ~3s（包括登录、加购、Checkout），
+      验证 agent 在"操作普遍有延迟"的场景下不会误判为失败或提前放弃。
+
+      步骤：
+      1. 打开 {{app_url}}，填 {{username}} / {{password}} 登录（登录按钮响应会慢，多等一下）
+      2. 确认 URL 跳到 /inventory.html
+      3. 给 Sauce Labs Backpack 加购一次
+      4. 进购物车 → Checkout，填 "{{checkout_first_name}}" / "{{checkout_last_name}}" / "{{checkout_zip}}" → Continue → Finish
+      5. 确认到达 Thank you 页面
+
+      注意：
+      - 所有操作的响应都会慢，遇到超时或元素暂时找不到不要立刻重试——多等一会再找
+      - 每次操作后先看快照确认元素是否真的不存在，再决定下一步
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
+    timeout_s: 1200
+    max_steps: 80
+    expected_fail: true
+    expected_fail_reason: "performance_glitch_user 所有操作变慢 ~3s（已知 Saucedemo 特性账号），timeout 可能不够覆盖整个链路——这条 case 用来观测 agent 对慢响应的韧性"
+
+  # =============== Visual 用户（视觉回归占位） ===============
+  - name: "[visual_user] 视觉回归占位——验证 agent 能正常走通基础链路"
+    url: "{{app_url}}"
+    data:
+      username: "{{visual_username}}"
+      password: "{{visual_password}}"
+    instruction: |
+      用 {{username}} / {{password}} 登录后加一件商品到购物车。
+      visual_user 的页面布局和 standard_user 有细微差异（可能是 CSS 类名或布局错位），
+      但核心元素（登录框、加购按钮、Checkout 表单）应该仍然可交互。
+      这条 case 不做像素级对比，只验证"基础链路能走通"。
+
+      步骤：
+      1. 打开 {{app_url}}，填 {{username}} / {{password}} 登录
+      2. 确认 URL 跳到 /inventory.html
+      3. 给 Sauce Labs Backpack 加购一次
+      4. 进购物车 → Checkout，填 "{{checkout_first_name}}" / "{{checkout_last_name}}" / "{{checkout_zip}}" → Continue → Finish
+      5. 确认到达 Thank you 页面
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
+    timeout_s: 600
+    max_steps: 50

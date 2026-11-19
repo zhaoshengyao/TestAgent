@@ -1,0 +1,50 @@
+# =====================================================================
+# 测试智能体配置模板：复制为 config.yaml 后按需修改
+#   copy config.example.yaml config.yaml
+# 所有项都可以被环境变量覆盖（见 .env.example）
+# =====================================================================
+
+llm:
+  # ollama = 本地 Ollama（数据不出本机）；deepseek = DeepSeek 云端
+  provider: ollama
+  model: qwen3:latest
+  # Ollama 走 OpenAI 兼容层，端口固定 11434
+  base_url: http://localhost:11434/v1
+  api_key: ollama
+  # 0.2 让测试逻辑稳定；想更“会变通”可调到 0.5
+  temperature: 0.2
+  max_tokens: 2048
+  timeout_s: 240
+  # 节流与退避（内网网关限流时调节）
+  # min_interval_s: 连续两次调用至少隔 N 秒（默认 2.0）
+  # max_attempts: 429 重试次数（默认 12，够内网网关等几分钟）
+  # base_delay_s: 退避起步秒数（默认 2.0，第一次重试等 2s，第二次 4s，…）
+  # max_delay_s: 单次退避封顶秒数（默认 60.0）
+
+browser:
+  # 留空 = 自动查找 npx / npx.cmd
+  command: ""
+  args:
+    - "@playwright/mcp@latest"
+  headless: true
+  # 截图目录，相对项目根目录
+  output_dir: artifacts/screens
+  startup_timeout_s: 120
+  tool_timeout_s: 60
+  # 追加到 @playwright/mcp 的额外参数，例如：
+  #   - "--viewport-size=1440,900"
+  #   - "--isolated"            # 每次用全新的临时浏览器配置
+  #   - "--browser=chromium"
+  extra_args: []
+
+agent:
+  # 单条用例最多多少轮“模型决策 → 工具执行”
+  max_steps: 40
+  # 选择器自愈的最多尝试次数
+  heal_attempts: 2
+  # 每次动作后自动补一次页面快照（模型老是忘记看页面时再打开）
+  auto_observe: false
+  # 单条工具输出截断长度，防止上下文爆炸
+  tool_result_char_limit: 6000
+  # 关键动作自动截图
+  screenshot_each_step: true

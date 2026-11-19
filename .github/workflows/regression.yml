@@ -1,0 +1,125 @@
+# =====================================================================
+# GitHub Actions CI：PR smoke + nightly full
+#
+# 触发：
+#   - PR / push 到 main → smoke_login.yaml（~5min，PR 门禁）
+#   - 每天 22:00 UTC → demo_checkout.yaml（~30min，nightly 全量）
+#
+# 依赖：
+#   - GitHub Secret DEEPSEEK_API_KEY：DeepSeek 云端 LLM API key
+#     （Settings → Secrets and variables → Actions → New repository secret）
+#   - 用 ubuntu-latest + Playwright 官方 action（比自建 Docker 镜像轻）
+#
+# exit code 语义（scripts/ci_run.py 做翻译）：
+#   0 / 2 → ✅ CI 通过（2 = 有 expected_fail 但无意外，known bug）
+#   1     → ❌ CI 阻断（unexpected_fail 或 error）
+# =====================================================================
+
+name: TestAgent CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  # Nightly 全量：UTC 22:00 = 北京时间 06:00
+  schedule:
+    - cron: "0 22 * * *"
+
+jobs:
+  # =====================================================================
+  # Job 1：PR / push smoke（smoke_login.yaml，~5min）
+  # =====================================================================
+  smoke:
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python deps
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Install Playwright Chromium + deps
+        uses: playwright/test@v1
+        with:
+          install-deps: true
+          browsers: chromium
+
+      - name: Setup CI config + API key
+        # config.ci.example.yaml 里 api_key 留空，config.py 的优先级链
+        # 会从环境变量 STAGENT_API_KEY 取
+        run: cp config.ci.example.yaml config.yaml
+
+      - name: Run selftest（离线自检）
+        run: python scripts/selftest.py
+
+      - name: Run smoke_login.yaml（PR 门禁）
+        env:
+          # config.py 优先级链: pick(yaml) → os.environ("STAGENT_API_KEY") → os.environ("OPENAI_API_KEY") → preset
+          # yaml 里 api_key="" 所以走环境变量
+          STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python scripts/ci_run.py suites/smoke_login.yaml
+
+      - name: Upload smoke reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-${{ github.event_name }}-${{ github.sha }}
+          path: artifacts/runs/*/
+          if-no-files-found: ignore
+          retention-days: 7
+
+  # =====================================================================
+  # Job 2：nightly 全量（demo_checkout.yaml，~30min）
+  # 不 block PR，只在 nightly 触发
+  # =====================================================================
+  nightly:
+    if: github.event_name == 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Python deps
+        run: pip install --no-cache-dir -r requirements.txt
+
+      - name: Install Playwright Chromium + deps
+        uses: playwright/test@v1
+        with:
+          install-deps: true
+          browsers: chromium
+
+      - name: Setup CI config + API key
+        run: cp config.ci.example.yaml config.yaml
+
+      - name: Run selftest
+        run: python scripts/selftest.py
+
+      - name: Run demo_checkout.yaml（7 条全量）
+        env:
+          STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
+        run: python scripts/ci_run.py suites/demo_checkout.yaml
+
+      - name: Upload nightly reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-${{ github.run_id }}
+          path: artifacts/runs/*/
+          if-no-files-found: ignore
+          retention-days: 30

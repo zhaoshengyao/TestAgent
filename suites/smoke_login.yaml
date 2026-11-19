@@ -1,0 +1,47 @@
+# 冒烟用例：验证"观察 → 登录 → 断言"整条链路是否打通
+# 跑法：python -m stagent run suites\smoke_login.yaml
+name: 登录冒烟
+
+base_url: https://www.saucedemo.com/
+
+# --- 数据参数化（新加）---
+# data_from 先合并外部账号库（locked_out_user / problem_user / visual_user 等真实账号）
+data_from: saucedemo_users.yaml
+# 内联 data 覆盖外部同名 key，用于本套用例的场景化变量
+data:
+  app_url: https://www.saucedemo.com/
+
+cases:
+  - name: 演示账号登录
+    url: "{{app_url}}"
+    data:
+      username: "{{standard_username}}"
+      password: "{{standard_password}}"
+    instruction: |
+      验证登录页可用，并用演示账号（{{username}} / {{password}}）完成登录。
+
+      步骤：
+      1. 打开 {{app_url}}
+      2. 先看页面快照，确认用户名输入框、密码输入框、登录按钮都存在
+      3. 依次填入 {{username}} / {{password}}，点击登录
+      4. 登录成功后截图留证
+    assertions:
+      - "登录后 URL 包含 /inventory.html"
+      - "登录后页面出现商品列表（Products 标题或商品条目）"
+
+  - name: 错误密码应被拒绝
+    url: "{{app_url}}"
+    data:
+      username: "{{standard_username}}"
+      password: wrong_pass_123
+    instruction: |
+      验证错误凭证会被拒绝。
+
+      步骤：
+      1. 打开 {{app_url}}
+      2. 用户名填 {{username}}，密码填 {{password}}
+      3. 点击登录
+      4. 观察页面报错文案并截图
+    assertions:
+      - "页面出现错误提示（包含 Epic sadface 或 Username and password do not match 之类文案）"
+      - "URL 仍然停留在登录页，没有进入 /inventory.html"

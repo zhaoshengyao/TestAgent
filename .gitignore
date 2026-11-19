@@ -1,0 +1,43 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+venv/
+
+# 本地 config（含密钥，绝对不能提交）
+config.yaml
+.env
+
+# 运行产物
+artifacts/
+
+# 临时
+*.log
+*.tmp
+*.txt
+!requirements.txt
+
+# 临时调试脚本
+_*.py
+_*.mjs
+_*.cjs
+_*.js
+_*.ps1
+_*.cmd
+
+# Node
+node_modules/
+
+# 根目录运行时截图（step_*.png 是 artifacts 里残留的）
+step_*.png
+
+# 杂项 mjs/ps1/js 临时脚本（非正式 stagent 代码）
+*.mjs
+*.cjs
+*.js
+*.ps1
+
+# 根目录评审文件（放 docs/ 里的保留）
+评审_*.md

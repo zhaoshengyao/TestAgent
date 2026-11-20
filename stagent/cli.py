@@ -43,6 +43,8 @@ def _exit_code_from_results(results: list) -> int:
     0 = 全 passed / 全 skipped
     2 = 有 expected_fail 但无 unexpected_fail/error
     1 = 有 unexpected_fail 或 error
+
+    注意：error 永远不算 expected_fail——崩溃就是崩溃，哪怕 case 声明了 expected_fail。
     """
     unexpected_fail = sum(
         1 for r in results
@@ -51,7 +53,7 @@ def _exit_code_from_results(results: list) -> int:
     )
     err = sum(
         1 for r in results
-        if r.status == "error" and not getattr(r, "expected_fail", False)
+        if r.status == "error"
     )
     if unexpected_fail or err:
         return 1

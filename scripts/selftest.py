@@ -142,8 +142,8 @@ cases:
   - name: locked_out
     data_from: {users_src.name}
     data:
-      username: "{{{{users.locked_out.username}}}}"
-      password: "{{{{users.locked_out.password}}}}"
+      username: "{{{{users.locked_out_user.username}}}}"
+      password: "{{{{users.locked_out_user.password}}}}"
     instruction: "user={{{{username}}}} pwd={{{{password}}}} site={{{{site}}}}"
     assertions: []
   - name: problem_shorthand
@@ -169,8 +169,8 @@ data:
 cases:
   - name: locked_out
     data:
-      username: "{{{{users.locked_out.username}}}}"
-      password: "{{{{users.locked_out.password}}}}"
+      username: "{{{{users.locked_out_user.username}}}}"
+      password: "{{{{users.locked_out_user.password}}}}"
     instruction: "user={{{{username}}}} pwd={{{{password}}}} site={{{{site}}}}"
     assertions: []
   - name: problem_shorthand

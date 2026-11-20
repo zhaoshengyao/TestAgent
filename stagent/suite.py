@@ -201,18 +201,21 @@ def load_suite(path: str | Path, only: str | None = None) -> Suite:
             case_data = _deep_merge(case_data, case_inline_data)
 
         # ---- 渲染字符串字段 ----
-        base_url_rendered = str(_render(base_url, case_data) or "").strip()
+        # case_data 里可能含 {{xxx}} 模板（如 users.locked_out.username），
+        # 渲染后存入 Case.data（selftest 和 agent 运行时都会读取）
+        case_data_rendered = _render(case_data, case_data)
+        base_url_rendered = str(_render(base_url, case_data_rendered) or "").strip()
         instruction = str(raw_case.get("instruction") or raw_case.get("steps") or "").strip()
         if not instruction:
             instruction = str(raw_case.get("desc") or "").strip()
         if not instruction:
             raise SystemExit(f"用例「{name}」缺少 instruction 字段")
-        instruction = str(_render(instruction, case_data))
+        instruction = str(_render(instruction, case_data_rendered))
 
         url = str(raw_case.get("url") or base_url_rendered or "").strip()
-        url = str(_render(url, case_data)).strip()
+        url = str(_render(url, case_data_rendered)).strip()
 
-        assertions_raw = _render(_as_str_list(raw_case.get("assertions")), case_data)
+        assertions_raw = _render(_as_str_list(raw_case.get("assertions")), case_data_rendered)
         assertions = [str(a) for a in assertions_raw if str(a).strip()]
 
         cases.append(
@@ -225,7 +228,7 @@ def load_suite(path: str | Path, only: str | None = None) -> Suite:
                 max_steps=int(raw_case.get("max_steps") or 0),
                 expected_fail=bool(raw_case.get("expected_fail") or False),
                 expected_fail_reason=str(raw_case.get("expected_fail_reason") or "").strip(),
-                data=case_data,
+                data=case_data_rendered,
             )
         )
 

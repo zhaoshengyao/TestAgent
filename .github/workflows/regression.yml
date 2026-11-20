@@ -25,6 +25,17 @@ on:
   # Nightly 全量：UTC 22:00 = 北京时间 06:00
   schedule:
     - cron: "0 22 * * *"
+  # 手动触发：GitHub Actions 页面点 "Run workflow"
+  workflow_dispatch:
+    inputs:
+      run_type:
+        description: 跑哪种
+        required: true
+        default: smoke
+        type: choice
+        options:
+          - smoke
+          - nightly
 
 jobs:
   # =====================================================================

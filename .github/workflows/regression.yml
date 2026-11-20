@@ -75,7 +75,13 @@ jobs:
         run: cp config.ci.example.yaml config.yaml
 
       - name: Verify stagent importable
-        run: python -c "from stagent import __version__; from stagent.agent import CaseResult; print('stagent OK, version:', __version__)"
+        run: |
+          echo "--- sys.path ---"
+          python -c "import sys; [print(p) for p in sys.path]"
+          echo "--- which stagent ---"
+          python -c "import stagent; print(stagent.__file__)"
+          echo "--- import from stagent ---"
+          python -c "from stagent import __version__; from stagent.agent import CaseResult; print('OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py
@@ -132,7 +138,13 @@ jobs:
         run: cp config.ci.example.yaml config.yaml
 
       - name: Verify stagent importable
-        run: python -c "from stagent import __version__; from stagent.agent import CaseResult; print('stagent OK, version:', __version__)"
+        run: |
+          echo "--- sys.path ---"
+          python -c "import sys; [print(p) for p in sys.path]"
+          echo "--- which stagent ---"
+          python -c "import stagent; print(stagent.__file__)"
+          echo "--- import from stagent ---"
+          python -c "from stagent import __version__; from stagent.agent import CaseResult; print('OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py

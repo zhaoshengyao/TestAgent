@@ -58,7 +58,9 @@ jobs:
           node-version: "20"
 
       - name: Install Python deps
-        run: pip install --no-cache-dir -r requirements.txt
+        run: |
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir -e .
 
       - name: Install Playwright system deps（Chromium 需要）
         # ubuntu-latest 默认没有 libgtk / xvfb / fonts 等
@@ -111,7 +113,9 @@ jobs:
           node-version: "20"
 
       - name: Install Python deps
-        run: pip install --no-cache-dir -r requirements.txt
+        run: |
+          pip install --no-cache-dir -r requirements.txt
+          pip install --no-cache-dir -e .
 
       - name: Install Playwright system deps（Chromium 需要）
         # ubuntu-latest 默认没有 libgtk / xvfb / fonts 等

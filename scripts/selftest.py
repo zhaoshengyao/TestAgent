@@ -79,7 +79,7 @@ def main() -> int:
         assert smoke.cases[0].assertions
         demo = load_suite(ROOT / "suites" / "demo_checkout.yaml")
         assert demo.cases[0].url.startswith("http")
-        assert len(demo.cases) == 2, f"demo_checkout 应有 2 条用例，实际 {len(demo.cases)}"
+        assert len(demo.cases) >= 7, f"demo_checkout 应有 >=7 条用例，实际 {len(demo.cases)}"
         # timeout 必须足够（真实跑 300-540s/条，300s 会超时误杀）
         assert all(c.timeout_s >= 300 for c in demo.cases), "demo_checkout 各用例 timeout_s 应 >= 300"
         return f"smoke={len(smoke.cases)} demo_checkout={len(demo.cases)}"

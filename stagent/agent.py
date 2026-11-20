@@ -128,12 +128,12 @@ def find_output_similar(a: str, b: str) -> bool:
 
 @dataclass
 class StepRecord:
-    index: int
-    tool: str
-    args: dict[str, Any]
-    ok: bool
-    output: str
-    duration_s: float
+    index: int = 0
+    tool: str = ""
+    args: dict[str, Any] = field(default_factory=dict)
+    ok: bool = True
+    output: str = ""
+    duration_s: float = 0.0
     healed: bool = False
     heal_notes: list[str] = field(default_factory=list)
     screenshots: list[str] = field(default_factory=list)

@@ -95,6 +95,11 @@ def _collect_signals(result: CaseResult) -> dict[str, Any]:
     total_steps = len(steps)
     duration_s = result.duration_s
 
+    # Phase 2: 慢环境信号——CI runner 上 tool duration 平均 > 1.5s 或最慢 > 5s
+    slow_steps = [s for s in steps if (getattr(s, "duration_s", 0) or 0) > 2.0]
+    avg_step_s = (sum(getattr(s, "duration_s", 0) or 0 for s in steps) / total_steps) if total_steps else 0
+    ok_ratio = (sum(1 for s in steps if s.ok) / total_steps) if total_steps else 0
+
     return {
         "has_loop_hint": has_loop_hint,
         "has_timeout_error": has_timeout_error,
@@ -110,6 +115,10 @@ def _collect_signals(result: CaseResult) -> dict[str, Any]:
         "total_steps": total_steps,
         "duration_s": duration_s,
         "result_status": result.status,
+        # Phase 2: timing signals
+        "slow_step_count": len(slow_steps),
+        "avg_step_s": round(avg_step_s, 2),
+        "ok_ratio": round(ok_ratio, 2),
     }
 
 
@@ -219,6 +228,26 @@ def _decide(sigs: dict[str, Any], result: CaseResult) -> FailureClassification:
 
     # ── max_steps 杀停 ──
     if sigs["has_max_steps_hit"]:
+        # Phase 2: 如果 tool 几乎全 ok + 没 loop_hint + 有慢 step → timing_issue
+        # 说明 agent 在 CI 慢环境下一直在推进，只是步数预算不够
+        if sigs["ok_ratio"] >= 0.8 and not sigs["has_loop_hint"] and sigs["slow_step_count"] >= 3:
+            matched.append("max_steps")
+            matched.append(f"ok_ratio={sigs['ok_ratio']}")
+            matched.append(f"slow_steps={sigs['slow_step_count']}")
+            matched.append(f"avg_step_s={sigs['avg_step_s']}")
+            return FailureClassification(
+                failure_category="timing_issue",
+                confidence=0.78,
+                reason=(
+                    f"max_steps 杀停但 {sigs['ok_ratio']*100:.0f}% 的工具调用成功，"
+                    f"且有 {sigs['slow_step_count']} 个 step 慢于 2s（平均 {sigs['avg_step_s']}s/步）。"
+                    f"agent 在 CI runner 上一直在推进，只是执行太慢导致步数预算耗尽。"
+                    f"建议：case 里加 max_steps_relief 或全局调大 agent.max_steps。"
+                ),
+                signal_count=len(matched),
+                matched_signals=matched,
+            )
+
         matched.append("max_steps")
         return FailureClassification(
             failure_category="agent_max_steps",

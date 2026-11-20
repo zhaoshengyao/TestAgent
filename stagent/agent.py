@@ -269,9 +269,14 @@ class TestAgent:
         case_name: str = "",
         start_url: str = "",
         max_steps: int | None = None,
+        _continuation_messages: list[dict[str, Any]] | None = None,
     ) -> str:
-        messages: list[dict[str, Any]] = [
-            {"role": "system", "content": SYSTEM_PROMPT},
+        # Phase 2：续命时复用已有 messages 上下文，不重建对话历史
+        if _continuation_messages is not None:
+            messages = _continuation_messages
+        else:
+            messages: list[dict[str, Any]] = [
+                {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": self._user_message(instruction, case_name, start_url)},
         ]
         answer = ""
@@ -308,6 +313,25 @@ class TestAgent:
                         "content": self._render_tool_output(result, step),
                     }
                 )
+
+        # ★ Phase 2：max_steps 杀停后自动续命——检测"差几步就完了"信号
+        # 触发条件：循环结束但 answer 为空 + 最后 5 步里有 >=3 步 ok=True 且非 loop_hint
+        # 说明 agent 在 CI 慢环境下一直在推进，只是步数预算不够。
+        relief_rounds = getattr(self, "_relief_rounds", 0)
+        last_ok_count = sum(1 for s in self.steps[-5:] if s.ok and not s.loop_hint)
+        if relief_rounds < 2 and last_ok_count >= 3 and not answer:
+            self._relief_rounds = relief_rounds + 1
+            relief = 15  # 每次续 15 步
+            print(
+                f"  ⚡ [RELIEF] max_steps={max_steps} 杀停但最后 5 步有 {last_ok_count} 步在推进，"
+                f"自动扩 {relief} 步（第 {self._relief_rounds} 次续命）"
+            )
+            # 扩预算重走循环——for 循环已结束，用递归调用
+            return await self.run_instruction(
+                instruction, case_name=case_name, start_url=start_url,
+                max_steps=max_steps + relief,
+                _continuation_messages=messages,
+            )
 
         return answer or f"达到最大步数（{max_steps}）仍未见结论，任务可能未完成。"
 

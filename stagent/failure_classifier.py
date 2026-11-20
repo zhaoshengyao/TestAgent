@@ -65,6 +65,10 @@ def _collect_signals(result: CaseResult) -> dict[str, Any]:
     has_max_steps_hit = bool(
         isinstance(result.answer, str) and "达到最大步数" in result.answer
     )
+    # Phase 2: loop_streak 硬拒绝信号——agent.py 里 _loop_streak >= 4 直接 return
+    has_loop_streak_kill = bool(
+        isinstance(result.answer, str) and "【循环终止】" in result.answer
+    )
 
     # 自愈统计
     heal_total = sum(1 for s in steps if s.healed)
@@ -104,6 +108,7 @@ def _collect_signals(result: CaseResult) -> dict[str, Any]:
         "has_loop_hint": has_loop_hint,
         "has_timeout_error": has_timeout_error,
         "has_max_steps_hit": has_max_steps_hit,
+        "has_loop_streak_kill": has_loop_streak_kill,
         "heal_total": heal_total,
         "tool_error_count": len(tool_error_steps),
         "dismiss_count": dismiss_count,
@@ -254,6 +259,26 @@ def _decide(sigs: dict[str, Any], result: CaseResult) -> FailureClassification:
             confidence=0.85,
             reason=f"用例达到 max_steps 仍未见结论，执行 {sigs['total_steps']} 步。",
             signal_count=1,
+            matched_signals=matched,
+        )
+
+    # ── loop_streak 硬拒绝（Phase 2）── 比 loop_hint 更严重，agent.py 直接 return 杀停
+    if sigs["has_loop_streak_kill"]:
+        matched.append("loop_streak_kill")
+        matched.append(f"consecutive_eval={sigs['consecutive_eval']}")
+        matched.append(f"consecutive_type={sigs['consecutive_type']}")
+        return FailureClassification(
+            failure_category="agent_loop",
+            confidence=0.90,
+            reason=(
+                "loop_streak >= 4 硬拒绝触发：agent 连续 4 次用相似工具参数重复相同操作"
+                "而没有推进任务，执行器强制终止用例。"
+                f"连续相似工具最高 eval={sigs['consecutive_eval']} 次、"
+                f"type/click={sigs['consecutive_type']} 次。"
+                f"根因可能：CI runner 慢导致 LLM 没看到 loop_hint 就又重复、"
+                f"或者 System Prompt 对 browser_find/browser_click 的策略提示不够强。"
+            ),
+            signal_count=len(matched),
             matched_signals=matched,
         )
 

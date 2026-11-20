@@ -64,10 +64,12 @@ jobs:
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps
+      - name: Install Playwright system deps + MCP 浏览器
         run: |
-          npx playwright install-deps chromium 2>&1 || \
-          (npm install -g playwright && npx playwright install-deps chromium)
+          # 先装 Chromium system deps（libgtk / xvfb / fonts 等）
+          npx playwright install-deps chromium 2>&1 || true
+          # 再装 @playwright/mcp 需要的 chrome-for-testing（它用的不是普通 Chromium）
+          npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
         run: cp config.ci.example.yaml config.yaml
@@ -127,10 +129,12 @@ jobs:
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps
+      - name: Install Playwright system deps + MCP 浏览器
         run: |
-          npx playwright install-deps chromium 2>&1 || \
-          (npm install -g playwright && npx playwright install-deps chromium)
+          # 先装 Chromium system deps（libgtk / xvfb / fonts 等）
+          npx playwright install-deps chromium 2>&1 || true
+          # 再装 @playwright/mcp 需要的 chrome-for-testing（它用的不是普通 Chromium）
+          npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
         run: cp config.ci.example.yaml config.yaml

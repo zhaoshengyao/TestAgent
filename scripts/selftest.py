@@ -15,7 +15,16 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
-from stagent import __version__  # noqa: E402
+# 从 __init__.py 文件读版本号（避免 CI 上同名 stagent 包的 import 歧义）
+_init_py = ROOT / "stagent" / "__init__.py"
+__version__ = "unknown"
+if _init_py.exists():
+    import re as _re
+    m = _re.search(r'__version__\s*=\s*["\']([^"\']+)["\']', _init_py.read_text(encoding="utf-8"))
+    if m:
+        __version__ = m.group(1)
+del _init_py
+
 from stagent.agent import CaseResult, StepRecord  # noqa: E402
 from stagent.config import load_config  # noqa: E402
 from stagent.reporter import write_reports  # noqa: E402

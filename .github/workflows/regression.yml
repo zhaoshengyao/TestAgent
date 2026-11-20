@@ -12,6 +12,10 @@
 #
 # exit code 翻译（scripts/ci_run.py）：
 #   CLI 0 / 2 → CI 绿，CLI 1 → CI 红
+#
+# 注意：不走 pip install -e . —— editable install 在 CI checkout 嵌两层
+# 时会指到错误路径，产生 __editable__.stagent finder hook 劫持 import。
+# selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path。
 # =====================================================================
 
 name: TestAgent CI
@@ -42,10 +46,6 @@ jobs:
     if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || github.inputs.run_type == 'smoke')
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    env:
-      # 让 python -m stagent 能找到 stagent/__main__.py
-      # CI 上 checkout 可能嵌两层（/TestAgent/TestAgent/），PYTHONPATH 兜底
-      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -61,27 +61,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Python deps + stagent 包
-        run: |
-          pip install --no-cache-dir -r requirements.txt
-          pip install --no-cache-dir -e .
+      - name: Install Python deps
+        run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps（Chromium 需要）
+      - name: Install Playwright system deps
         run: |
           npx playwright install-deps chromium 2>&1 || \
           (npm install -g playwright && npx playwright install-deps chromium)
 
-      - name: Setup CI config + API key
+      - name: Setup CI config
         run: cp config.ci.example.yaml config.yaml
-
-      - name: Verify stagent importable
-        run: |
-          echo "--- sys.path ---"
-          python -c "import sys; [print(p) for p in sys.path]"
-          echo "--- which stagent ---"
-          python -c "import stagent; print(stagent.__file__)"
-          echo "--- import from stagent ---"
-          python -c "from stagent import __version__; from stagent.agent import CaseResult; print('OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py
@@ -107,8 +96,6 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.inputs.run_type == 'nightly')
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    env:
-      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -124,27 +111,16 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Python deps + stagent 包
-        run: |
-          pip install --no-cache-dir -r requirements.txt
-          pip install --no-cache-dir -e .
+      - name: Install Python deps
+        run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps（Chromium 需要）
+      - name: Install Playwright system deps
         run: |
           npx playwright install-deps chromium 2>&1 || \
           (npm install -g playwright && npx playwright install-deps chromium)
 
-      - name: Setup CI config + API key
+      - name: Setup CI config
         run: cp config.ci.example.yaml config.yaml
-
-      - name: Verify stagent importable
-        run: |
-          echo "--- sys.path ---"
-          python -c "import sys; [print(p) for p in sys.path]"
-          echo "--- which stagent ---"
-          python -c "import stagent; print(stagent.__file__)"
-          echo "--- import from stagent ---"
-          python -c "from stagent import __version__; from stagent.agent import CaseResult; print('OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py

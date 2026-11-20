@@ -16,6 +16,8 @@
 # 注意：不走 pip install -e . —— editable install 在 CI checkout 嵌两层
 # 时会指到错误路径，产生 __editable__.stagent finder hook 劫持 import。
 # selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path。
+#
+# 重要：workflow_dispatch inputs 用 inputs.run_type 而不是 github.inputs.run_type！
 # =====================================================================
 
 name: TestAgent CI
@@ -43,7 +45,11 @@ jobs:
   # Job 1：smoke（PR / push / 手动选 smoke）
   # =====================================================================
   smoke:
-    if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || github.inputs.run_type == 'smoke')
+    # push / PR → 自动跑 smoke
+    # workflow_dispatch → 只有 inputs.run_type == 'smoke' 才跑
+    if: >
+      github.event_name != 'schedule' &&
+      (github.event_name != 'workflow_dispatch' || inputs.run_type == 'smoke')
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -54,7 +60,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # 不设 cache：pip install 用了 --no-cache-dir，Post step 找不到 cache 目录会报错
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -66,9 +71,7 @@ jobs:
 
       - name: Install Playwright system deps + MCP 浏览器
         run: |
-          # 先装 Chromium system deps（libgtk / xvfb / fonts 等）
           npx playwright install-deps chromium 2>&1 || true
-          # 再装 @playwright/mcp 需要的 chrome-for-testing（它用的不是普通 Chromium）
           npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
@@ -83,18 +86,6 @@ jobs:
           STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python scripts/ci_run.py suites/smoke_login.yaml; echo "exit_code=$?"
 
-      - name: Print report on failure
-        if: steps.run.outcome != 'success'
-        run: |
-          echo "=== artifacts dir ==="
-          find artifacts -type f 2>/dev/null || echo "no artifacts"
-          echo ""
-          echo "=== report.md ==="
-          cat artifacts/runs/*/report.md 2>/dev/null || echo "no report.md"
-          echo ""
-          echo "=== summary.json ==="
-          cat artifacts/runs/*/summary.json 2>/dev/null || echo "no summary.json"
-
       - name: Upload smoke reports
         if: always()
         uses: actions/upload-artifact@v4
@@ -108,7 +99,11 @@ jobs:
   # Job 2：nightly（schedule + 手动选 nightly）
   # =====================================================================
   nightly:
-    if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.inputs.run_type == 'nightly')
+    # schedule → 自动跑 nightly
+    # workflow_dispatch → 只有 inputs.run_type == 'nightly' 才跑
+    if: >
+      github.event_name == 'schedule' ||
+      (github.event_name == 'workflow_dispatch' && inputs.run_type == 'nightly')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     steps:
@@ -119,7 +114,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-          # 不设 cache：pip install 用了 --no-cache-dir，Post step 找不到 cache 目录会报错
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -131,9 +125,7 @@ jobs:
 
       - name: Install Playwright system deps + MCP 浏览器
         run: |
-          # 先装 Chromium system deps（libgtk / xvfb / fonts 等）
           npx playwright install-deps chromium 2>&1 || true
-          # 再装 @playwright/mcp 需要的 chrome-for-testing（它用的不是普通 Chromium）
           npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
@@ -147,18 +139,6 @@ jobs:
         env:
           STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
         run: python scripts/ci_run.py suites/demo_checkout.yaml; echo "exit_code=$?"
-
-      - name: Print report on failure
-        if: steps.run.outcome != 'success'
-        run: |
-          echo "=== artifacts dir ==="
-          find artifacts -type f 2>/dev/null || echo "no artifacts"
-          echo ""
-          echo "=== report.md ==="
-          cat artifacts/runs/*/report.md 2>/dev/null || echo "no report.md"
-          echo ""
-          echo "=== summary.json ==="
-          cat artifacts/runs/*/summary.json 2>/dev/null || echo "no summary.json"
 
       - name: Upload nightly reports
         if: always()

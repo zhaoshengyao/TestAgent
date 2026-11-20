@@ -143,9 +143,9 @@ class StepRecord:
 
 @dataclass
 class CaseResult:
-    name: str
-    url: str
-    instruction: str
+    name: str = ""
+    url: str = ""
+    instruction: str = ""
     status: str = "completed"
     answer: str = ""
     steps: list[StepRecord] = field(default_factory=list)

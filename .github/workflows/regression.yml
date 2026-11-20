@@ -42,6 +42,10 @@ jobs:
     if: github.event_name != 'schedule' && (github.event_name != 'workflow_dispatch' || github.inputs.run_type == 'smoke')
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # 让 python -m stagent 能找到 stagent/__main__.py
+      # CI 上 checkout 可能嵌两层（/TestAgent/TestAgent/），PYTHONPATH 兜底
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -57,21 +61,21 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Python deps
+      - name: Install Python deps + stagent 包
         run: |
           pip install --no-cache-dir -r requirements.txt
           pip install --no-cache-dir -e .
 
       - name: Install Playwright system deps（Chromium 需要）
-        # ubuntu-latest 默认没有 libgtk / xvfb / fonts 等
-        # @playwright/mcp 第一次启动会自动下载 Chromium 二进制
-        # 但 system deps 必须提前装，否则 Chromium 会崩溃
         run: |
           npx playwright install-deps chromium 2>&1 || \
           (npm install -g playwright && npx playwright install-deps chromium)
 
       - name: Setup CI config + API key
         run: cp config.ci.example.yaml config.yaml
+
+      - name: Verify stagent importable
+        run: python -c "from stagent import __version__; from stagent.agent import CaseResult; print('stagent OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py
@@ -97,6 +101,8 @@ jobs:
     if: github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.inputs.run_type == 'nightly')
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    env:
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -112,24 +118,21 @@ jobs:
         with:
           node-version: "20"
 
-      - name: Install Python deps
+      - name: Install Python deps + stagent 包
         run: |
           pip install --no-cache-dir -r requirements.txt
           pip install --no-cache-dir -e .
 
       - name: Install Playwright system deps（Chromium 需要）
-        # ubuntu-latest 默认没有 libgtk / xvfb / fonts 等
-        # @playwright/mcp 第一次启动会自动下载 Chromium 二进制
-        # 但 system deps 必须提前装，否则 Chromium 会崩溃
         run: |
           npx playwright install-deps chromium 2>&1 || \
           (npm install -g playwright && npx playwright install-deps chromium)
 
-      - name: Install Playwright + Chromium + system deps
-        run: npx playwright install --with-deps chromium
-
       - name: Setup CI config + API key
         run: cp config.ci.example.yaml config.yaml
+
+      - name: Verify stagent importable
+        run: python -c "from stagent import __version__; from stagent.agent import CaseResult; print('stagent OK, version:', __version__)"
 
       - name: Run selftest
         run: python scripts/selftest.py

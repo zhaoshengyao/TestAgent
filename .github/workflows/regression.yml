@@ -76,9 +76,22 @@ jobs:
         run: python scripts/selftest.py
 
       - name: Run smoke_login.yaml
+        id: run
         env:
           STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python scripts/ci_run.py suites/smoke_login.yaml
+        run: python scripts/ci_run.py suites/smoke_login.yaml; echo "exit_code=$?"
+
+      - name: Print report on failure
+        if: steps.run.outcome != 'success'
+        run: |
+          echo "=== artifacts dir ==="
+          find artifacts -type f 2>/dev/null || echo "no artifacts"
+          echo ""
+          echo "=== report.md ==="
+          cat artifacts/runs/*/report.md 2>/dev/null || echo "no report.md"
+          echo ""
+          echo "=== summary.json ==="
+          cat artifacts/runs/*/summary.json 2>/dev/null || echo "no summary.json"
 
       - name: Upload smoke reports
         if: always()
@@ -126,9 +139,22 @@ jobs:
         run: python scripts/selftest.py
 
       - name: Run demo_checkout.yaml（7 条全量）
+        id: run
         env:
           STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python scripts/ci_run.py suites/demo_checkout.yaml
+        run: python scripts/ci_run.py suites/demo_checkout.yaml; echo "exit_code=$?"
+
+      - name: Print report on failure
+        if: steps.run.outcome != 'success'
+        run: |
+          echo "=== artifacts dir ==="
+          find artifacts -type f 2>/dev/null || echo "no artifacts"
+          echo ""
+          echo "=== report.md ==="
+          cat artifacts/runs/*/report.md 2>/dev/null || echo "no report.md"
+          echo ""
+          echo "=== summary.json ==="
+          cat artifacts/runs/*/summary.json 2>/dev/null || echo "no summary.json"
 
       - name: Upload nightly reports
         if: always()

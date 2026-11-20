@@ -17,6 +17,48 @@ import sys
 from pathlib import Path
 
 
+def _print_diagnostics():
+    """失败时打印诊断信息到 stdout（CI 日志里直接可见）。"""
+    print("\n=== CI 诊断 ===")
+
+    # 1. config 诊断
+    try:
+        from stagent.config import load_config
+        cfg = load_config()
+        key_preview = (cfg.llm.api_key[:6] + "..." + cfg.llm.api_key[-4:]) if cfg.llm.api_key else "(empty)"
+        print(f"provider: {cfg.llm.provider}")
+        print(f"model: {cfg.llm.model}")
+        print(f"base_url: {cfg.llm.base_url}")
+        print(f"api_key: {key_preview}")
+    except Exception as e:
+        print(f"config load error: {e}")
+
+    # 2. report.md / summary.json 内容
+    artifacts = Path("artifacts/runs")
+    if artifacts.exists():
+        for d in sorted(artifacts.iterdir()):
+            for fname in ("report.md", "summary.json"):
+                f = d / fname
+                if f.exists():
+                    print(f"\n--- {f} ---")
+                    try:
+                        # report.md 只打 error 相关行
+                        content = f.read_text(encoding="utf-8", errors="replace")
+                        if fname.endswith(".md"):
+                            for line in content.splitlines():
+                                if any(kw in line for kw in ("error", "Error", "ERROR", "异常", "failed", "Traceback")):
+                                    print(line)
+                            # 如果没 error 关键字，打前 30 行
+                            if not any(kw in content for kw in ("error", "Error", "ERROR", "异常")):
+                                print("\n".join(content.splitlines()[:30]))
+                        else:
+                            print(content[:2000])
+                    except Exception as e:
+                        print(f"(read error: {e})")
+    else:
+        print("artifacts/runs 目录不存在")
+
+
 def main() -> int:
     args = sys.argv[1:]
     if not args:
@@ -46,13 +88,14 @@ def main() -> int:
     print(f"\n[CI] raw exit code: {code}")
 
     if code == 0:
-        print("[CI] ✅ 全 passed")
+        print("[CI] 全 passed")
         return 0
     elif code == 2:
-        print("[CI] ⚠️ 有 expected_fail（known bug），无 unexpected → 翻译为 exit 0（CI 通过）")
+        print("[CI] 有 expected_fail（known bug），无 unexpected → 翻译为 exit 0（CI 通过）")
         return 0
     else:
-        print("[CI] ❌ unexpected_fail 或 error → exit 1（CI 阻断）")
+        print("[CI] unexpected_fail 或 error → exit 1（CI 阻断）")
+        _print_diagnostics()
         return 1
 
 

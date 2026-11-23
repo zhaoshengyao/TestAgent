@@ -53,6 +53,8 @@ jobs:
     runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 15
     defaults:
+      env:
+        PYTHONUTF8: "1"
       run:
         shell: pwsh
     steps:
@@ -103,6 +105,8 @@ jobs:
     runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 45
     defaults:
+      env:
+        PYTHONUTF8: "1"
       run:
         shell: pwsh
     steps:

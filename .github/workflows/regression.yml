@@ -9,15 +9,14 @@
 # Runner 要求：
 #   - Windows（当前机器）
 #   - 已注册为 self-hosted runner，标签 testagent-windows
-#   - 系统 PATH 里有 Python 3.11+ 和 Node 20+（setup-python/setup-node 在 Windows
-#     self-hosted 上需要管理员权限写注册表，会炸，所以直接用系统装的）
+#   - 系统 PATH 里有 Python 3.12（winget install Python.Python.3.12）+ Node 24
 #   - 已能访问内网千问端点（base_url + api_key 走 GitHub Secret）
 #   - Playwright 浏览器首次跑会自动装 chrome-for-testing（~100MB）
 #
 # exit code 翻译（scripts/ci_run.py）：
 #   CLI 0 / 2 → CI 绿，CLI 1 → CI 红
 #
-# 注意：不走 python -m pip install -e . —— editable install 劫持 import
+# 注意：不走 pip install -e . —— editable install 劫持 import
 # selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path
 # workflow_dispatch inputs 用 inputs.run_type
 # =====================================================================
@@ -52,9 +51,9 @@ jobs:
       (github.event_name != 'workflow_dispatch' || inputs.run_type == 'smoke')
     runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 15
+    env:
+      PYTHONUTF8: "1"
     defaults:
-      env:
-        PYTHONUTF8: "1"
       run:
         shell: pwsh
     steps:
@@ -104,9 +103,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.run_type == 'nightly')
     runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 45
+    env:
+      PYTHONUTF8: "1"
     defaults:
-      env:
-        PYTHONUTF8: "1"
       run:
         shell: pwsh
     steps:

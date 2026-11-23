@@ -292,7 +292,11 @@ class TestAgent:
         # 优先用传入的 Case 级值，否则回退到全局 config 默认 40
         max_steps = max(1, max_steps or self.cfg.agent.max_steps)
 
-        for index in range(1, max_steps + 1):
+        # ★ 用 while 不用 for range——loop_streak 续命时 max_steps 会动态扩，
+        # range() 是静态生成的，扩了也不生效（之前的 bug：continue 跳回来循环直接结束）
+        index = 0
+        while index < max_steps:
+            index += 1
             # ★ 硬拒绝兜底：软提示失效时（模型无视 loop_hint 继续刷同一类工具），
             # streak>=4 直接终止，避免烧光 max_steps / timeout。
             # 覆盖：find / evaluate / run_code_unsafe / type / press_key 五种。
@@ -305,12 +309,11 @@ class TestAgent:
                     self._loop_relief_rounds = loop_relief_rounds + 1
                     self._loop_streak = 0  # 清 streak
                     relief = 10
+                    max_steps += relief  # while 条件会在下次迭代重新评估
                     print(
                         f"  ⚡ [LOOP-RELIEF] loop_streak>=4 杀停（已跑 {index} 步），"
                         f"清 streak + 扩 max_steps +{relief} 让 agent 换策略（第 {self._loop_relief_rounds} 次）"
                     )
-                    # 扩预算 + 清 streak → continue 回到 for 循环继续跑
-                    max_steps += relief
                     continue
 
                 return (

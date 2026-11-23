@@ -1,23 +1,24 @@
 # =====================================================================
-# GitHub Actions CI：PR smoke + nightly full
+# GitHub Actions CI（self-hosted runner on Windows）
 #
 # 触发：
-#   - PR / push 到 main → smoke_login.yaml（~5min，PR 门禁）
-#   - 每天 UTC 22:00 → demo_checkout.yaml（~30min，nightly 全量）
+#   - PR / push 到 main → smoke_login.yaml（PR 门禁）
+#   - 每天 UTC 22:00 → demo_checkout.yaml（nightly 全量）
 #   - 手动 Run workflow → 可选 smoke / nightly
 #
-# 依赖：
-#   - GitHub Secret DEEPSEEK_API_KEY
-#   - ubuntu-latest + Node + npx playwright install（官方推荐方式）
+# Runner 要求：
+#   - Windows（当前机器）
+#   - 已注册为 self-hosted runner，标签 testagent-windows
+#   - 已装 Python 3.12 + Node 20（setup-python / setup-node 会自动装到 runner 缓存）
+#   - 已能访问内网千问端点（base_url + api_key 走 GitHub Secret）
+#   - Playwright 浏览器首次跑会自动装 chrome-for-testing（~100MB）
 #
 # exit code 翻译（scripts/ci_run.py）：
 #   CLI 0 / 2 → CI 绿，CLI 1 → CI 红
 #
-# 注意：不走 pip install -e . —— editable install 在 CI checkout 嵌两层
-# 时会指到错误路径，产生 __editable__.stagent finder hook 劫持 import。
-# selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path。
-#
-# 重要：workflow_dispatch inputs 用 inputs.run_type 而不是 github.inputs.run_type！
+# 注意：不走 pip install -e . —— editable install 劫持 import
+# selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path
+# workflow_dispatch inputs 用 inputs.run_type
 # =====================================================================
 
 name: TestAgent CI
@@ -45,13 +46,14 @@ jobs:
   # Job 1：smoke（PR / push / 手动选 smoke）
   # =====================================================================
   smoke:
-    # push / PR → 自动跑 smoke
-    # workflow_dispatch → 只有 inputs.run_type == 'smoke' 才跑
     if: >
       github.event_name != 'schedule' &&
       (github.event_name != 'workflow_dispatch' || inputs.run_type == 'smoke')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 15
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -69,13 +71,11 @@ jobs:
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps + MCP 浏览器
-        run: |
-          npx playwright install-deps chromium 2>&1 || true
-          npx @playwright/mcp install-browser chrome-for-testing
+      - name: Install Playwright MCP browser
+        run: npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
-        run: cp config.ci.example.yaml config.yaml
+        run: Copy-Item config.ci.example.yaml config.yaml
 
       - name: Run selftest
         run: python scripts/selftest.py
@@ -83,8 +83,10 @@ jobs:
       - name: Run smoke_login.yaml
         id: run
         env:
-          STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python scripts/ci_run.py suites/smoke_login.yaml; echo "exit_code=$?"
+          STAGENT_API_KEY: ${{ secrets.STAGENT_API_KEY }}
+          STAGENT_BASE_URL: ${{ secrets.STAGENT_BASE_URL }}
+          STAGENT_MODEL: ${{ secrets.STAGENT_MODEL }}
+        run: python scripts/ci_run.py suites/smoke_login.yaml; Write-Output "exit_code=$LASTEXITCODE"
 
       - name: Upload smoke reports
         if: always()
@@ -99,13 +101,14 @@ jobs:
   # Job 2：nightly（schedule + 手动选 nightly）
   # =====================================================================
   nightly:
-    # schedule → 自动跑 nightly
-    # workflow_dispatch → 只有 inputs.run_type == 'nightly' 才跑
     if: >
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.run_type == 'nightly')
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, testagent-windows]
     timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -123,28 +126,28 @@ jobs:
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt
 
-      - name: Install Playwright system deps + MCP 浏览器
-        run: |
-          npx playwright install-deps chromium 2>&1 || true
-          npx @playwright/mcp install-browser chrome-for-testing
+      - name: Install Playwright MCP browser
+        run: npx @playwright/mcp install-browser chrome-for-testing
 
       - name: Setup CI config
-        run: cp config.ci.example.yaml config.yaml
+        run: Copy-Item config.ci.example.yaml config.yaml
 
       - name: Run selftest
         run: python scripts/selftest.py
 
-      - name: Run demo_checkout.yaml（7 条全量）
+      - name: Run demo_checkout.yaml
         id: run
         env:
-          STAGENT_API_KEY: ${{ secrets.DEEPSEEK_API_KEY }}
-        run: python scripts/ci_run.py suites/demo_checkout.yaml; echo "exit_code=$?"
+          STAGENT_API_KEY: ${{ secrets.STAGENT_API_KEY }}
+          STAGENT_BASE_URL: ${{ secrets.STAGENT_BASE_URL }}
+          STAGENT_MODEL: ${{ secrets.STAGENT_MODEL }}
+        run: python scripts/ci_run.py suites/demo_checkout.yaml; Write-Output "exit_code=$LASTEXITCODE"
 
       - name: Upload nightly reports
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: nightly-${{ github.run_id }}
+          name: nightly-${{ github.event_name }}-${{ github.sha }}
           path: artifacts/runs/*/
           if-no-files-found: ignore
-          retention-days: 30
+          retention-days: 7

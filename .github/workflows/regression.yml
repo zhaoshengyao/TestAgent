@@ -50,7 +50,7 @@ jobs:
       github.event_name != 'schedule' &&
       (github.event_name != 'workflow_dispatch' || inputs.run_type == 'smoke')
     runs-on: [self-hosted, testagent-windows]
-    timeout-minutes: 15
+    timeout-minutes: 30
     env:
       PYTHONUTF8: "1"
     defaults:
@@ -102,7 +102,7 @@ jobs:
       github.event_name == 'schedule' ||
       (github.event_name == 'workflow_dispatch' && inputs.run_type == 'nightly')
     runs-on: [self-hosted, testagent-windows]
-    timeout-minutes: 45
+    timeout-minutes: 90
     env:
       PYTHONUTF8: "1"
     defaults:

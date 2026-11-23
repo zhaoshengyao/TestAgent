@@ -9,7 +9,8 @@
 # Runner 要求：
 #   - Windows（当前机器）
 #   - 已注册为 self-hosted runner，标签 testagent-windows
-#   - 已装 Python 3.12 + Node 20（setup-python / setup-node 会自动装到 runner 缓存）
+#   - 系统 PATH 里有 Python 3.11+ 和 Node 20+（setup-python/setup-node 在 Windows
+#     self-hosted 上需要管理员权限写注册表，会炸，所以直接用系统装的）
 #   - 已能访问内网千问端点（base_url + api_key 走 GitHub Secret）
 #   - Playwright 浏览器首次跑会自动装 chrome-for-testing（~100MB）
 #
@@ -58,15 +59,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: Verify Python / Node
+        run: |
+          python --version
+          node --version
+          pip --version
 
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt
@@ -113,15 +110,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
+      - name: Verify Python / Node
+        run: |
+          python --version
+          node --version
+          pip --version
 
       - name: Install Python deps
         run: pip install --no-cache-dir -r requirements.txt

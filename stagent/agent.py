@@ -196,6 +196,9 @@ class TestAgent:
         self._snapshot_history = []
         self._loop_streak = 0
         self._loop_window = []
+        # Phase 2: 续命计数器必须每个 case 独立——跨 case 累积会导致后续 case 再也不续命
+        self._relief_rounds = 0
+        self._loop_relief_rounds = 0
         self.heal_log.reset()
         result = CaseResult(
             name=case.name, url=case.url, instruction=case.instruction,

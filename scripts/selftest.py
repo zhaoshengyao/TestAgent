@@ -337,11 +337,11 @@ cases:
         assert _exit_code_from_results([r_pass, r_ufail]) == 1, _exit_code_from_results([r_pass, r_ufail])
         # 4) passed + expected_fail + unexpected_fail → 1（意外失败优先）
         assert _exit_code_from_results([r_pass, r_efail, r_ufail]) == 1
-        # 5) error 即使是 expected_fail → 1（异常不算预期）
+        # 5) error 且 expected_fail → 2（声明了就是探测 bug，崩了也算预期）
         assert _exit_code_from_results([CaseResult(
             name="E", url="", instruction="", status="error",
             expected_fail=True,
-        )]) == 1
+        )]) == 2
         return "exit code 三态 5 个断言全过"
 
     check("cli exit code 三态", _cli_exit_code_tri_state)

@@ -38,22 +38,24 @@ def _meta(cfg: Config) -> dict:
 
 
 def _exit_code_from_results(results: list) -> int:
-    """exit code 三态判定（给 selftest 单测 + _execute 共用）。
+    """exit code 三态判定：
 
-    0 = 全 passed / 全 skipped
-    2 = 有 expected_fail 但无 unexpected_fail/error
-    1 = 有 unexpected_fail 或 error
+    0 = 全 passed
+    2 = 有 expected_fail 但无意外（expected_fail 的 case 无论 status 是 failed 还是 error 都算预期）
+    1 = 有 unexpected_fail 或 非expected_fail 的 error
 
-    注意：error 永远不算 expected_fail——崩溃就是崩溃，哪怕 case 声明了 expected_fail。
+    Phase 2 改动：expected_fail 的 case 如果跑崩（error），算 expected_fail 不算红线。
+    因为声明 expected_fail 就是探测 bug 的——崩了说明 bug 表现更严重而已。
     """
     unexpected_fail = sum(
         1 for r in results
         if not getattr(r, "expected_fail", False)
         and r.status in ("failed", "completed")
     )
+    # 只统计非 expected_fail 的 error
     err = sum(
         1 for r in results
-        if r.status == "error"
+        if r.status == "error" and not getattr(r, "expected_fail", False)
     )
     if unexpected_fail or err:
         return 1

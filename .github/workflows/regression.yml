@@ -17,7 +17,7 @@
 # exit code 翻译（scripts/ci_run.py）：
 #   CLI 0 / 2 → CI 绿，CLI 1 → CI 红
 #
-# 注意：不走 pip install -e . —— editable install 劫持 import
+# 注意：不走 python -m pip install -e . —— editable install 劫持 import
 # selftest / ci_run.py 自己做 Path(__file__).resolve().parents[1] 插入 sys.path
 # workflow_dispatch inputs 用 inputs.run_type
 # =====================================================================
@@ -65,7 +65,7 @@ jobs:
           node --version
 
       - name: Install Python deps
-        run: pip install --no-cache-dir -r requirements.txt
+        run: python -m pip install --no-cache-dir -r requirements.txt
 
       - name: Install Playwright MCP browser
         run: npx @playwright/mcp install-browser chrome-for-testing
@@ -115,7 +115,7 @@ jobs:
           node --version
 
       - name: Install Python deps
-        run: pip install --no-cache-dir -r requirements.txt
+        run: python -m pip install --no-cache-dir -r requirements.txt
 
       - name: Install Playwright MCP browser
         run: npx @playwright/mcp install-browser chrome-for-testing

@@ -288,6 +288,22 @@ class TestAgent:
             # streak>=4 直接终止，避免烧光 max_steps / timeout。
             # 覆盖：find / evaluate / run_code_unsafe / type / press_key 五种。
             if self._loop_streak >= 4:
+                # ★ Phase 2 续命：loop_streak 杀停但 agent 还在跑（不是 0 步就崩），
+                # 给一次机会扩 max_steps + 清 streak，让 agent 换策略继续。
+                # 只有 1 次续命机会（已经达到 max_steps 续命 2 次后再来就是真循环）
+                loop_relief_rounds = getattr(self, "_loop_relief_rounds", 0)
+                if loop_relief_rounds < 1 and index >= 5:
+                    self._loop_relief_rounds = loop_relief_rounds + 1
+                    self._loop_streak = 0  # 清 streak
+                    relief = 10
+                    print(
+                        f"  ⚡ [LOOP-RELIEF] loop_streak>=4 杀停（已跑 {index} 步），"
+                        f"清 streak + 扩 max_steps +{relief} 让 agent 换策略（第 {self._loop_relief_rounds} 次）"
+                    )
+                    # 扩预算 + 清 streak → continue 回到 for 循环继续跑
+                    max_steps += relief
+                    continue
+
                 return (
                     f"【循环终止】连续 {self._loop_streak} 次用相似的工具参数重复相同操作而没有推进任务，"
                     f"执行器强制结束本用例。已完成的操作见步骤记录；"

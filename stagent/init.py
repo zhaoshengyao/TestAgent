@@ -171,6 +171,14 @@ cases:
 
 def _build_config_yaml(url: str, username: str, password: str) -> str:
     """生成 config.yaml（留空 LLM 字段让用户填）。"""
+    # 内网 HTTPS 大概率自签名，自动帮用户加 --ignore-https-errors
+    is_internal_https = url.startswith("https://") and (
+        "localhost" in url
+        or "127.0.0.1" in url
+        or re.match(r"https://\d+\.\d+\.\d+\.\d+", url)
+    )
+    extra = '\n  extra_args:\n    - "--ignore-https-errors"' if is_internal_https else ""
+
     return f"""# TestAgent 配置（stagent init 自动生成）
 # LLM 配置：provider / base_url / model / api_key 任选一个来源
 #   1. 填在 yaml 里（明文，仅本地调试）
@@ -191,7 +199,7 @@ agent:
   auto_observe: false
 
 browser:
-  headless: false            # init 阶段建议有头，看得到浏览器
+  headless: false            # init 阶段建议有头，看得到浏览器{extra}
   startup_timeout_s: 120
   tool_timeout_s: 60
 """
@@ -216,6 +224,15 @@ async def cmd_init(args: argparse.Namespace) -> int:
     # Step 1: 探测页面（load_config 而不是 Config()）
     print("\n── Step 1: 探测页面可交互元素 ──")
     cfg = load_config()
+    # 内网 HTTPS 大概率自签名，自动注入 --ignore-https-errors
+    if url.startswith("https://") and (
+        "localhost" in url
+        or "127.0.0.1" in url
+        or re.match(r"https://\d+\.\d+\.\d+\.\d+", url)
+    ):
+        print("  💡 检测到内网 HTTPS，自动忽略 SSL 自签名证书错误")
+        if "--ignore-https-errors" not in cfg.browser.extra_args:
+            cfg.browser.extra_args.append("--ignore-https-errors")
     disc = await _discover(cfg, url)
     if not disc:
         print("\n❌ 探测失败。可能原因：")

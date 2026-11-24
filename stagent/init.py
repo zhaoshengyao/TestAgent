@@ -183,30 +183,13 @@ def _build_suite_yaml(
     base_url: str, username: str, password: str,
     post_cls: dict | None = None,
 ) -> str:
-    """生成 suite.yaml。"""
+    """生成 suite.yaml——根据探测到的业务按钮自动拼 Case 指令。"""
     safe_name = base_url.rstrip("/").replace("https://", "").replace("http://", "").split("/")[0]
 
-    # 自动从登录后探测生成业务流程建议
-    biz_todos = []
-    if post_cls:
-        if post_cls["biz_btn"]:
-            biz_labels = ", ".join(f'"{e["label"]}"' for e in post_cls["biz_btn"][:4])
-            biz_todos.append(f"  # 登录后发现业务按钮：{biz_labels}")
-            biz_todos.append("  # 可以考虑加 '创建→编辑→删除' 流程")
-        if post_cls["nav"]:
-            nav_labels = ", ".join(f'"{e["label"]}"' for e in post_cls["nav"][:4])
-            biz_todos.append(f"  # 导航菜单：{nav_labels}")
-            biz_todos.append("  # 可以考虑加 '各菜单页面跳转不报错' 流程")
+    cases = []
 
-    return f"""# TestAgent 用例集（stagent init 自动生成）
-name: {safe_name} 回归测试
-app_url: "{base_url}"
-standard_username: "{username}"
-standard_password: "{password}"
-
-cases:
-  # ── 登录冒烟（自动生成）──
-  - name: "登录冒烟"
+    # 1. 登录冒烟（必生成）
+    cases.append(f"""  - name: "登录冒烟"
     url: {base_url}
     instruction: |
       用 {username} / {password} 登录。
@@ -220,24 +203,104 @@ cases:
       - "登录后 URL 变化（跳转到非登录页）"
       - "页面出现退出按钮或用户信息"
     timeout_s: 1800
+""")
 
-  # ── TODO：业务流程（手动补）──
-{chr(10).join(biz_todos) if biz_todos else "  # 根据实际探测结果手动补业务流程"}
-  # - name: "创建→编辑→删除"
-  #   url: {base_url}
+    # 2. 根据探测到的业务按钮自动生成
+    if post_cls:
+        has_create = any("create" in e["label"].lower() or "新建" in e["label"] or "创建" in e["label"] or "add" in e["label"].lower() for e in post_cls["biz_btn"])
+        has_edit = any("edit" in e["label"].lower() or "编辑" in e["label"] for e in post_cls["biz_btn"])
+        has_delete = any("delete" in e["label"].lower() or "删除" in e["label"] for e in post_cls["biz_btn"])
+        has_save = any("save" in e["label"].lower() or "保存" in e["label"] or "submit" in e["label"].lower() or "提交" in e["label"] for e in post_cls["biz_btn"])
+        nav_labels = [e["label"] for e in post_cls["nav"]]
+
+        # 2a. 菜单冒烟——导航栏每个按钮点一遍
+        if nav_labels and any(k in " ".join(nav_labels).lower() for k in ("dashboard", "home", "仪表盘", "首页")):
+            cases.append(f"""  - name: "菜单冒烟：{nav_labels[0]}页能打开"
+    url: {base_url}
+    instruction: |
+      1. 用 {username} / {password} 登录
+      2. 点击导航栏的「{nav_labels[0]}」
+      3. 确认页面加载成功（URL 跳转 / 页面有实际内容 / 没有 loading spinner）
+    assertions:
+      - "点击「{nav_labels[0]}」后页面正常加载"
+      - "没有报错或空页面"
+    timeout_s: 1800
+""")
+
+        # 2b. 创建流程
+        if has_create:
+            action = "创建" if any("创建" in e["label"] or "新建" in e["label"] for e in post_cls["biz_btn"]) else "Add"
+            cases.append(f"""  - name: "{action}流程"
+    url: {base_url}
+    instruction: |
+      1. 用 {username} / {password} 登录
+      2. 点击「{action}」按钮
+      3. 逐个填写表单里的所有输入框（填合理的测试数据）
+      4. 点击提交/保存
+      5. 确认创建成功（URL 跳转 / 成功提示 / 列表出现新记录）
+    assertions:
+      - "创建后出现成功提示或 URL 变化"
+      - "列表/详情页出现刚创建的记录"
+    timeout_s: 1800
+""")
+
+        # 2c. 编辑流程
+        if has_edit:
+            cases.append(f"""  - name: "编辑流程"
+    url: {base_url}
+    instruction: |
+      1. 用 {username} / {password} 登录
+      2. 在列表页找到第一条记录，点击「编辑」
+      3. 修改任意一个字段（比如改名称/改备注）
+      4. 保存
+      5. 确认编辑生效（字段值已更新）
+    assertions:
+      - "保存后编辑生效"
+      - "没有报错"
+    timeout_s: 1800
+""")
+
+        # 2d. 删除流程
+        if has_delete:
+            cases.append(f"""  - name: "删除流程"
+    url: {base_url}
+    instruction: |
+      1. 用 {username} / {password} 登录
+      2. 在列表页找到要删除的记录，点击「删除」
+      3. 如果有确认弹窗，点击确认
+      4. 确认删除成功（列表不再出现该记录）
+    assertions:
+      - "删除成功"
+      - "列表页不再出现该记录"
+    timeout_s: 1800
+""")
+
+    # 3. fallback——啥业务按钮都没探测到，给个模板
+    if len(cases) == 1:
+        cases.append("""  # ── TODO：补充业务流程 ──
+  # init 没探测到明显的业务按钮（创建/编辑/删除等），
+  # 可能需要先点进某个子菜单才能看到。手动补完后跑全量：
+  #   python -m stagent run suite.yaml --config config.yaml
+  #
+  # - name: "完整业务流程"
+  #   url: """ + f'"{base_url}"' + """
   #   instruction: |
   #     1. 登录
-  #     2. 点击"创建"按钮
-  #     3. 填写表单并提交
-  #     4. 点击"编辑"修改字段
-  #     5. 提交并确认生效
-  #     6. 删除并确认列表更新
+  #     2. 走一遍你们的核心业务链路
+  #     3. 确认最终状态正确
   #   assertions:
-  #     - "创建后列表出现新记录"
-  #     - "编辑后字段值更新"
-  #     - "删除后列表不再出现该记录"
+  #     - "核心流程走通"
   #   timeout_s: 1800
-"""
+""")
+
+    return f"""# TestAgent 用例集（stagent init 自动生成）
+name: {safe_name} 回归测试
+app_url: "{base_url}"
+standard_username: "{username}"
+standard_password: "{password}"
+
+cases:
+{chr(10).join(cases)}"""
 
 
 def _build_config_yaml(url: str, username: str, password: str) -> str:

@@ -44,6 +44,9 @@ async def _auto_login_and_discover(
       {"pre": {interactive, snapshot}, "post": {interactive, snapshot},
        "after_url": "https://..." , "url": "...原始URL..."}
     """
+    # init 强制独立 session——不受 CI/之前浏览残留 cookies 影响
+    cfg.browser.extra_args = [a for a in cfg.browser.extra_args if "--isolated" not in a] + ["--isolated"]
+
     bridge = MCPBridge(cfg.browser, cfg.base_dir, cfg.screens_dir)
     result: dict = {"pre": {}, "post": {}, "after_url": "", "url": url}
 

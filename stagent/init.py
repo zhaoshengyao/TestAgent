@@ -130,13 +130,30 @@ async def _auto_login_and_discover(
 
 
 def _classify(elements: list[dict]) -> dict:
-    """把交互元素分类：登录框 / 表单 / 导航按钮 / 业务按钮 / 其他。"""
+    """把交互元素分类——尽量覆盖中文业务系统的常见命名。"""
     result = {
         "username": [], "password": [], "login_btn": [],
-        "nav": [], "biz_btn": [], "form_fields": [], "other": [],
+        "menu": [], "biz_btn": [], "form_fields": [], "other": [],
     }
+    # 业务按钮关键词（中英文混合）
+    BIZ_KEYWORDS = (
+        "create", "新建", "创建", "add", "新增", "添加", "新建",
+        "save", "保存", "submit", "提交", "确认",
+        "delete", "删除", "remove", "移除", "删除",
+        "edit", "编辑", "update", "修改", "编辑",
+        "导入", "export", "导出", "import",
+        "审核", "approve", "audit", "confirm",
+        "返回", "back", "取消", "cancel",
+    )
+    # 导航关键词（通用）
+    NAV_KEYWORDS = (
+        "dashboard", "home", "homepage", "仪表盘", "首页", "退出", "logout", "登出",
+        "工作台", "驾驶舱", "台账", "中心", "管理", "列表", "详情",
+        "menu", "菜单", "导航",
+    )
+
     for e in elements:
-        label = e["label"].lower().replace(" ", "")  # 统一去空格！
+        label = e["label"].lower().replace(" ", "")
         etype = e["type"].lower()
 
         if etype == "textbox" and (
@@ -151,16 +168,16 @@ def _classify(elements: list[dict]) -> dict:
             or "submit" in label or "confirm" in label
         ):
             result["login_btn"].append(e)
-        elif etype in ("link", "button") and any(k in label for k in (
-            "dashboard", "home", "homepage", "仪表盘", "首页", "退出", "logout", "登出"
-        )):
-            result["nav"].append(e)
-        elif etype in ("button", "link") and any(k in label for k in (
-            "create", "新建", "创建", "add", "新增", "添加",
-            "save", "保存", "submit", "提交",
-            "delete", "删除", "remove", "移除",
-            "edit", "编辑", "update", "修改",
-        )):
+        # 导航：menuitem / navigation / 带业务系统关键词的 link/button
+        elif etype in ("menuitem", "navigation") or (
+            etype in ("link", "button")
+            and any(k in label for k in NAV_KEYWORDS)
+        ):
+            result["menu"].append(e)
+        # 业务按钮：任何类型（button/link/menuitem）带业务关键词
+        elif etype in ("button", "link", "menuitem") and any(
+            k in label for k in BIZ_KEYWORDS
+        ):
             result["biz_btn"].append(e)
         elif etype == "textbox":
             result["form_fields"].append(e)
@@ -180,7 +197,7 @@ def _print_discover(disc: dict, phase: str = "登录前"):
     print(f"\n📁 {phase}页面（{len(interactive)} 个交互元素）")
     groups = [
         ("🔐 登录相关", cls["username"] + cls["password"] + cls["login_btn"]),
-        ("🗂️ 导航/菜单", cls["nav"]),
+        ("🗂️ 导航/菜单", cls["menu"]),
         ("⚡ 业务按钮", cls["biz_btn"]),
         ("📝 表单字段", cls["form_fields"]),
         ("其他", cls["other"][:10]),
@@ -227,7 +244,7 @@ def _build_suite_yaml(
         has_edit = any("edit" in e["label"].lower() or "编辑" in e["label"] for e in post_cls["biz_btn"])
         has_delete = any("delete" in e["label"].lower() or "删除" in e["label"] for e in post_cls["biz_btn"])
         has_save = any("save" in e["label"].lower() or "保存" in e["label"] or "submit" in e["label"].lower() or "提交" in e["label"] for e in post_cls["biz_btn"])
-        nav_labels = [e["label"] for e in post_cls["nav"]]
+        nav_labels = [e["label"] for e in post_cls["menu"]]
 
         # 2a. 菜单冒烟——导航栏每个按钮点一遍
         if nav_labels and any(k in " ".join(nav_labels).lower() for k in ("dashboard", "home", "仪表盘", "首页")):

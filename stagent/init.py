@@ -90,7 +90,7 @@ async def _auto_login_and_discover(
                 print(f"  ⚠️ 填表失败：{fill.text[:100]}")
 
             # 点登录
-            click = await bridge.call("browser_click", {"ref": btn_ref})
+            click = await bridge.call("browser_click", {"element": "登录按钮", "target": btn_ref})
             if click.is_error:
                 # 可能需要重新找按钮 ref
                 print(f"  ⚠️ 点击登录按钮失败：{click.text[:100]}")
@@ -106,10 +106,13 @@ async def _auto_login_and_discover(
                     "snapshot": post_snap.text or "",
                 }
 
-            # 拿当前 URL
-            eval_result = await bridge.call("browser_evaluate", {"expression": "location.href"})
+            # 拿当前 URL（MCP browser_evaluate 参数是 function，格式是箭头函数）
+            eval_result = await bridge.call(
+                "browser_evaluate",
+                {"function": "() => { return location.href; }"}
+            )
             if not eval_result.is_error and eval_result.text:
-                result["after_url"] = eval_result.text.strip().strip('"')
+                result["after_url"] = eval_result.text.strip().strip('"').strip("'")
 
             print(f"  ✅ 登录后 URL: {result['after_url'] or '(同上)'}")
             n = len(result["post"].get("interactive", []))

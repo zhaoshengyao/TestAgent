@@ -214,15 +214,50 @@ def _render_html(
 ) -> str:
     ef = counts.get("expected_fail", 0)
     uf = counts.get("unexpected_fail", 0)
+    total = len(results)
+    pass_rate = counts["passed"] / total * 100 if total else 0
+    total_time = sum(r.duration_s for r in results)
+    slowest = max(results, key=lambda r: r.duration_s) if results else None
+    fastest = min(results, key=lambda r: r.duration_s) if results else None
+
     body: list[str] = []
+
+    # ── 汇总面板 ──
+    body.append('<div class="summary-panel">')
+    body.append(f'<div class="pass-rate">{pass_rate:.0f}%<span class="pass-rate-label">通过率</span></div>')
+    body.append('<div class="stat-grid">')
+    body.append(f'<div class="stat"><div class="stat-num passed">{counts["passed"]}</div><div class="stat-label">通过</div></div>')
+    body.append(f'<div class="stat"><div class="stat-num unexpected">{uf}</div><div class="stat-label">意外失败</div></div>')
+    body.append(f'<div class="stat"><div class="stat-num expected">{ef}</div><div class="stat-label">预期失败</div></div>')
+    body.append(f'<div class="stat"><div class="stat-num error">{counts["error"]}</div><div class="stat-label">异常</div></div>')
+    body.append(f'<div class="stat"><div class="stat-num">{total_time:.0f}s</div><div class="stat-label">总耗时</div></div>')
+    body.append('</div>')
+
+    # 快速导航标签（失败 case 一键跳转）
+    if uf > 0 or counts["error"] > 0:
+        body.append('<div class="nav-row">')
+        body.append('<span class="nav-title">⚠️ 快速定位：</span>')
+        for i, r in enumerate(results):
+            if (r.status == "failed" and not r.expected_fail) or r.status == "error":
+                body.append(f'<a href="#case-{i+1}" class="nav-link bad">{html.escape(r.name[:30])}</a>')
+        body.append('</div>')
+    body.append('</div>')  # summary-panel close
+
+    # ── Header ──
     body.append(
         f"<h1>{html.escape(title)}</h1>"
         f'<p class="meta">生成时间 {html.escape(stamp)} ｜ 模型 {html.escape(str(meta.get("model", "-")))} ｜ '
-        f"通过 {counts['passed']} ／ ❌意外失败 {uf} ／ ⚠️预期失败 {ef} ／ 异常 {counts['error']}</p>"
+        f"通过 {counts['passed']} ／ ❌意外失败 {uf} ／ ⚠️预期失败 {ef} ／ 异常 {counts['error']}"
     )
+    if slowest and fastest and fastest != slowest:
+        body.append(
+            f'<p class="meta">🕐 最快 {fastest.duration_s:.1f}s（{html.escape(fastest.name[:25])}）｜'
+            f" 🐢 最慢 {slowest.duration_s:.1f}s（{html.escape(slowest.name[:25])}）</p>"
+        )
 
-    for result in results:
-        body.append('<section class="case">')
+    # ── 每个 Case ──
+    for i, result in enumerate(results):
+        body.append(f'<section class="case" id="case-{i+1}">')
         if result.status == "passed":
             icon = "✅"
             badge_cls = "passed"
@@ -286,10 +321,19 @@ def _render_html(
             body.append(f"<h3>Agent 结论</h3><pre>{html.escape(result.answer.strip())}</pre>")
 
         if result.screenshots:
-            body.append("<h3>截图</h3><div class='shots'>")
-            for shot in result.screenshots:
+            body.append("<h3>📸 截图 Timeline</h3><div class='shots-timeline'>")
+            for idx, shot in enumerate(result.screenshots):
                 rel = html.escape(_rel(shot, out_dir))
-                body.append(f'<a href="{rel}" target="_blank"><img src="{rel}" alt=""></a>')
+                # 从截图文件名提取步骤号（step_01_xxx.png → Step 1）
+                label = Path(shot).stem
+                step_match = __import__("re").match(r"step_(\d+)", label)
+                step_num = step_match.group(1) if step_match else str(idx + 1)
+                body.append(
+                    f'<div class="shot-item">'
+                    f'<span class="shot-label">Step {step_num}: {html.escape(label)}</span>'
+                    f'<a href="{rel}" target="_blank"><img src="{rel}" alt="Step {step_num}"></a>'
+                    f'</div>'
+                )
             body.append("</div>")
 
         body.append("</section>")
@@ -303,34 +347,69 @@ _HTML_TEMPLATE = """<!doctype html>
 <meta charset="utf-8">
 <title>{title}</title>
 <style>
+  :root {{ --passed:#166534; --passed-bg:#dcfce7; --failed:#991b1b; --failed-bg:#fee2e2; --expected:#92400e; --expected-bg:#fef3c7; --error:#7c2d12; --error-bg:#ffedd5; --border:#e5e7eb; --muted:#6b7280; }}
+  * {{ box-sizing: border-box; }}
   body {{ font-family: -apple-system, "Segoe UI", "Microsoft YaHei", sans-serif; margin: 32px auto; max-width: 1100px; color: #1f2328; line-height: 1.6; }}
-  h1 {{ font-size: 24px; }}
-  h2 {{ font-size: 18px; margin-top: 32px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; }}
+  h1 {{ font-size: 24px; margin-top: 0; }}
+  h2 {{ font-size: 18px; margin-top: 32px; border-bottom: 1px solid #e5e7eb; padding-bottom: 8px; scroll-margin-top: 12px; }}
   h3 {{ font-size: 15px; margin-top: 20px; }}
-  .meta {{ color: #6b7280; font-size: 13px; }}
-  .case {{ border: 1px solid #e5e7eb; border-radius: 10px; padding: 4px 20px 16px; margin: 20px 0; }}
+  .meta {{ color: #6b7280; font-size: 13px; margin: 4px 0; }}
+
+  /* ── 汇总面板 ── */
+  .summary-panel {{ background: linear-gradient(135deg, #f0f9ff 0%, #faf5ff 100%); border: 1px solid #e0e7ff; border-radius: 14px; padding: 24px; margin: 0 0 24px; }}
+  .pass-rate {{ font-size: 56px; font-weight: 700; color: var(--passed); line-height: 1; text-align: center; }}
+  .pass-rate-label {{ font-size: 14px; color: var(--muted); display: block; margin-top: 4px; font-weight: 400; }}
+  .stat-grid {{ display: grid; grid-template-columns: repeat(5, 1fr); gap: 16px; margin-top: 20px; }}
+  .stat {{ text-align: center; }}
+  .stat-num {{ font-size: 28px; font-weight: 700; color: #1f2328; }}
+  .stat-num.passed {{ color: var(--passed); }}
+  .stat-num.unexpected {{ color: var(--failed); }}
+  .stat-num.expected {{ color: var(--expected); }}
+  .stat-num.error {{ color: var(--error); }}
+  .stat-label {{ font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }}
+  .nav-row {{ margin-top: 16px; display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }}
+  .nav-title {{ font-size: 13px; color: var(--muted); }}
+  .nav-link {{ font-size: 12px; padding: 4px 10px; border-radius: 6px; text-decoration: none; }}
+  .nav-link.bad {{ background: #fee2e2; color: var(--failed); border: 1px solid #fecaca; }}
+  .nav-link.bad:hover {{ background: #fecaca; }}
+
+  /* ── Case 卡片 ── */
+  .case {{ border: 1px solid var(--border); border-radius: 10px; padding: 4px 20px 16px; margin: 20px 0; }}
   .badge {{ font-size: 13px; padding: 2px 8px; border-radius: 999px; margin-right: 8px; }}
-  .badge.passed {{ background: #dcfce7; color: #166534; }}
-  .badge.failed {{ background: #fee2e2; color: #991b1b; }}
-  .badge.error {{ background: #fef3c7; color: #92400e; }}
-  .badge.expected-fail {{ background: #fef3c7; color: #92400e; }}
+  .badge.passed {{ background: var(--passed-bg); color: var(--passed); }}
+  .badge.failed {{ background: var(--failed-bg); color: var(--failed); }}
+  .badge.error {{ background: var(--error-bg); color: var(--error); }}
+  .badge.expected-fail {{ background: var(--expected-bg); color: var(--expected); }}
   .badge.completed {{ background: #e5e7eb; color: #374151; }}
-  .expected-reason {{ color: #92400e; background: #fffbeb; padding: 6px 10px; border-radius: 6px; font-size: 13px; margin-top: 4px; }}
+  .expected-reason {{ color: var(--expected); background: #fffbeb; padding: 6px 10px; border-radius: 6px; font-size: 13px; margin-top: 4px; border-left: 3px solid #fbbf24; }}
   .failure-category {{ color: #7c3aed; background: #faf5ff; padding: 6px 10px; border-radius: 6px; font-size: 13px; margin-top: 4px; border-left: 3px solid #a78bfa; }}
   .failure-reason {{ color: #4c1d95; background: #f5f3ff; padding: 6px 10px; border-radius: 6px; font-size: 12px; margin-top: 2px; line-height: 1.5; }}
   table {{ border-collapse: collapse; width: 100%; font-size: 13px; }}
-  th, td {{ border: 1px solid #e5e7eb; padding: 6px 8px; text-align: left; vertical-align: top; }}
+  th, td {{ border: 1px solid var(--border); padding: 6px 8px; text-align: left; vertical-align: top; }}
   th {{ background: #f9fafb; }}
   code {{ font-size: 12px; word-break: break-all; }}
   pre {{ background: #f6f8fa; padding: 12px; border-radius: 8px; white-space: pre-wrap; font-size: 13px; }}
   .assertions {{ list-style: none; padding-left: 0; }}
   .assertions li {{ padding: 6px 0; border-bottom: 1px dashed #eee; }}
-  .assertions li.ok {{ color: #166534; }}
-  .assertions li.bad {{ color: #991b1b; }}
-  .assertions em {{ display: block; color: #6b7280; font-size: 12px; font-style: normal; }}
-  .err {{ color: #991b1b; background: #fef2f2; padding: 8px; border-radius: 6px; }}
-  .shots {{ display: flex; flex-wrap: wrap; gap: 12px; }}
-  .shots img {{ max-width: 320px; border: 1px solid #e5e7eb; border-radius: 6px; }}
+  .assertions li.ok {{ color: var(--passed); }}
+  .assertions li.bad {{ color: var(--failed); }}
+  .assertions em {{ display: block; color: var(--muted); font-size: 12px; font-style: normal; }}
+  .err {{ color: var(--failed); background: #fef2f2; padding: 8px; border-radius: 6px; }}
+
+  /* ── 截图 Timeline ── */
+  .shots-timeline {{ display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }}
+  .shots-timeline .shot-item {{ display: flex; align-items: center; gap: 12px; }}
+  .shots-timeline .shot-label {{ flex-shrink: 0; font-size: 12px; color: var(--muted); min-width: 160px; }}
+  .shots-timeline img {{ max-width: 200px; border: 1px solid var(--border); border-radius: 6px; cursor: zoom-in; }}
+  .shots-grid {{ display: flex; flex-wrap: wrap; gap: 12px; }}
+  .shots-grid img {{ max-width: 320px; border: 1px solid var(--border); border-radius: 6px; }}
+
+  /* ── 响应式 ── */
+  @media (max-width: 720px) {{
+    .stat-grid {{ grid-template-columns: repeat(3, 1fr); }}
+    .pass-rate {{ font-size: 40px; }}
+    body {{ margin: 16px; }}
+  }}
 </style>
 </head>
 <body>

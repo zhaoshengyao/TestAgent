@@ -266,9 +266,13 @@ class TestAgent:
         except LLMError as exc:
             result.status = "error"
             result.error = str(exc)
+            import traceback as _tb
+            print(f"  💥 [LLMError] {case.name}: {exc}\n{_tb.format_exc()}")
         except Exception as exc:
             result.status = "error"
             result.error = f"{type(exc).__name__}: {exc}"
+            import traceback as _tb
+            print(f"  💥 [Exception] {case.name}: {type(exc).__name__}: {exc}\n{_tb.format_exc()}")
 
         return self._finalize(result, started)
 

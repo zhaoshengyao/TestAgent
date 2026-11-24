@@ -266,7 +266,7 @@ cases:
         assert any("[visual_user]" in n for n in names), names
         # expected_fail 字段：problem/error/performance 三条声明了，standard/locked_out/visual 没声明
         ef_count = sum(1 for c in demo.cases if c.expected_fail)
-        assert ef_count == 3, f"expected_fail 应 3 条，实 {ef_count}"
+        assert ef_count == 5, f"expected_fail 应 5 条，实 {ef_count}"
         # max_steps 字段：problem/error/performance 各 80+，standard 用默认 40
         assert all(c.max_steps >= 40 for c in demo.cases if c.max_steps)
         # timeout 合规

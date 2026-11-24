@@ -107,7 +107,7 @@ async def _auto_login_and_discover(
                 }
 
             # 拿当前 URL
-            eval_result = await bridge.call("browser_evaluate", {"script": "location.href"})
+            eval_result = await bridge.call("browser_evaluate", {"expression": "location.href"})
             if not eval_result.is_error and eval_result.text:
                 result["after_url"] = eval_result.text.strip().strip('"')
 
@@ -133,18 +133,31 @@ def _classify(elements: list[dict]) -> dict:
         "nav": [], "biz_btn": [], "form_fields": [], "other": [],
     }
     for e in elements:
-        label = e["label"].lower()
+        label = e["label"].lower().replace(" ", "")  # 统一去空格！
         etype = e["type"].lower()
 
-        if etype == "textbox" and ("user" in label or "账号" in label):
+        if etype == "textbox" and (
+            "user" in label or "账号" in label
+            or "用户名" in label or "name" in label
+        ):
             result["username"].append(e)
         elif etype == "textbox" and ("pass" in label or "密码" in label):
             result["password"].append(e)
-        elif etype in ("button", "submit") and any(k in label for k in ("login", "sign in", "signin", "登录", "确定")):
+        elif etype in ("button", "submit") and (
+            "login" in label or "signin" in label or "登录" in label or "确定" in label
+            or "submit" in label or "confirm" in label
+        ):
             result["login_btn"].append(e)
-        elif etype in ("link", "button") and any(k in label for k in ("dashboard", "home", "homepage", "仪表盘", "首页", "退出", "logout")):
+        elif etype in ("link", "button") and any(k in label for k in (
+            "dashboard", "home", "homepage", "仪表盘", "首页", "退出", "logout", "登出"
+        )):
             result["nav"].append(e)
-        elif etype in ("button", "link") and any(k in label for k in ("create", "新建", "创建", "add", "新增", "save", "保存", "submit", "提交", "删除", "delete", "编辑", "edit")):
+        elif etype in ("button", "link") and any(k in label for k in (
+            "create", "新建", "创建", "add", "新增", "添加",
+            "save", "保存", "submit", "提交",
+            "delete", "删除", "remove", "移除",
+            "edit", "编辑", "update", "修改",
+        )):
             result["biz_btn"].append(e)
         elif etype == "textbox":
             result["form_fields"].append(e)

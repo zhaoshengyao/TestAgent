@@ -15,6 +15,7 @@ from pathlib import Path
 from .agent import CaseResult, TestAgent
 from .config import Config, load_config
 from .doctor import run_doctor
+from .init import add_init_parser, cmd_init
 from .llm import LLM
 from .mcp_bridge import MCPBridge
 from .reporter import write_reports
@@ -182,6 +183,8 @@ def _build_parser() -> argparse.ArgumentParser:
     p_ask.add_argument("--config", default=None)
     p_ask.add_argument("--out", default=None)
 
+    add_init_parser(sub)
+
     return parser
 
 
@@ -195,6 +198,13 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.cmd == "doctor":
         return run_doctor(args.config)
+
+    if args.cmd == "init":
+        try:
+            return asyncio.run(cmd_init(args))
+        except KeyboardInterrupt:
+            print("\n已中断。", flush=True)
+            return 130
 
     cfg = load_config(args.config)
     if not cfg.config_path:

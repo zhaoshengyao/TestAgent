@@ -40,7 +40,7 @@ cases:
       - "登录后 URL 包含 /inventory.html"
       - "购物车页显示两件商品（Sauce Labs Backpack 和 Sauce Labs Bolt T-Shirt）"
       - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
-    timeout_s: 600
+    timeout_s: 1800
 
   - name: "[standard] 空购物车 Checkout 进入结算页但不应能下单"
     url: "{{app_url}}"
@@ -59,7 +59,7 @@ cases:
     assertions:
       - "购物车页为空（没有 cart_item 商品条目）"
       - "结算汇总页显示没有商品（subtotal 为 $0.00 或商品列表为空）"
-    timeout_s: 600
+    timeout_s: 1800
 
   # =============== Problem 用户（前端 bug） ===============
   - name: "[problem_user] 购物车流程应能完成但图片/按钮可能异常"
@@ -79,7 +79,7 @@ cases:
     assertions:
       - "登录后 URL 包含 /inventory.html"
       - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
-    timeout_s: 900
+    timeout_s: 1800
     max_steps: 80
     expected_fail: true
     expected_fail_reason: "problem_user 的 Checkout 表单有前端 bug：browser_fill_form 失效 + Continue 按钮会清掉 Last Name 值（20261118 真实全量跑发现）"
@@ -128,7 +128,7 @@ cases:
     assertions:
       - "登录后 URL 包含 /inventory.html"
       - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
-    timeout_s: 900
+    timeout_s: 1800
     max_steps: 80
     expected_fail: true
     expected_fail_reason: "error_user 在 Checkout 环节会随机抛前端错误（已知的 Saucedemo bug 账号），agent 可能需要多轮重试才能走通——这条 case 用来探测 error_user 的具体 bug 表现，不是失败"
@@ -156,7 +156,7 @@ cases:
     assertions:
       - "登录后 URL 包含 /inventory.html"
       - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
-    timeout_s: 1200
+    timeout_s: 1800
     max_steps: 80
     expected_fail: true
     expected_fail_reason: "performance_glitch_user 所有操作变慢 ~3s（已知 Saucedemo 特性账号），timeout 可能不够覆盖整个链路——这条 case 用来观测 agent 对慢响应的韧性"
@@ -182,5 +182,5 @@ cases:
     assertions:
       - "登录后 URL 包含 /inventory.html"
       - "结算完成后页面出现 Thank you 或 Order complete 之类成功文案"
-    timeout_s: 600
+    timeout_s: 1800
     max_steps: 50

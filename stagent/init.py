@@ -13,7 +13,7 @@ import re
 import sys
 from pathlib import Path
 
-from .config import Config
+from .config import Config, load_config
 from .mcp_bridge import MCPBridge
 from .suite import Case
 
@@ -200,6 +200,8 @@ browser:
 async def cmd_init(args: argparse.Namespace) -> int:
     """init 主流程。"""
     url = args.url
+    # 防止用户粘贴两次 https://
+    url = re.sub(r'^(https?://)+', 'https://', url)
     out_dir = Path(args.dir).resolve()
     yes = args.yes
 
@@ -211,9 +213,10 @@ async def cmd_init(args: argparse.Namespace) -> int:
     print(f"🌐 目标：{url}")
     print(f"📁 输出目录：{out_dir}")
 
-    # Step 1: 探测页面
+    # Step 1: 探测页面（load_config 而不是 Config()）
     print("\n── Step 1: 探测页面可交互元素 ──")
-    disc = await _discover(Config(), url)
+    cfg = load_config()
+    disc = await _discover(cfg, url)
     if not disc:
         print("\n❌ 探测失败。可能原因：")
         print("   - URL 打不开")

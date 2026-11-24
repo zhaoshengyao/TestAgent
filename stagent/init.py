@@ -1,9 +1,10 @@
-"""交互式向导：init → 探测页面 → 生成 suite.yaml + config.yaml。
+"""交互式向导：init → 探测页面 → 自动登录 → 生成 suite.yaml + config.yaml。
 
 不依赖 LLM，只用 Playwright MCP 的 snapshot 发现可交互元素。
 
 用法：
   python -m stagent init --url https://www.saucedemo.com --dir ./my-test
+  python -m stagent init --url https://192.168.2.68:6088/ --dir ./client-test -y
 """
 from __future__ import annotations
 
@@ -18,128 +19,199 @@ from .mcp_bridge import MCPBridge
 from .suite import Case
 
 
-async def _discover(cfg: Config, url: str) -> dict:
-    """打开 URL，跑 snapshot，解析可交互元素。"""
+def _parse_snapshot(text: str) -> list[dict]:
+    """解析 snapshot 文本，提取交互元素列表。
+
+    行格式示例：
+      - textbox "Username" [ref=e11]
+      - button "Login" [ref=e15]
+    """
+    interactive = []
+    for line in text.splitlines():
+        m = re.match(r'-\s+(\S+)\s+"([^"]*)"\s+\[ref=(\S+)\]', line.strip())
+        if m:
+            etype, label, ref = m.group(1), m.group(2), m.group(3)
+            interactive.append({"type": etype, "label": label, "ref": ref})
+    return interactive
+
+
+async def _auto_login_and_discover(
+    cfg: Config, url: str, username: str, password: str
+) -> dict:
+    """打开 URL → 自动填账号密码登录 → 登录后跑 snapshot 探测业务页面。
+
+    返回结构：
+      {"pre": {interactive, snapshot}, "post": {interactive, snapshot},
+       "after_url": "https://..." , "url": "...原始URL..."}
+    """
     bridge = MCPBridge(cfg.browser, cfg.base_dir, cfg.screens_dir)
+    result: dict = {"pre": {}, "post": {}, "after_url": "", "url": url}
+
     try:
         await bridge.start()
     except Exception as exc:
         print(f"✗ MCP 启动失败：{exc}")
         print("  请先跑：python -m stagent doctor")
-        return {}
+        return result
 
     try:
+        # 1. 打开页面
         nav = await bridge.call("browser_navigate", {"url": url})
         if nav.is_error:
             print(f"✗ 无法打开 {url}：{nav.text[:200]}")
-            return {}
+            return result
 
-        snap = await bridge.call("browser_snapshot", {})
-        if snap.is_error:
-            print(f"✗ snapshot 失败：{snap.text[:200]}")
-            return {}
+        # 2. 登录前探测
+        pre_snap = await bridge.call("browser_snapshot", {})
+        if not pre_snap.is_error:
+            result["pre"] = {
+                "interactive": _parse_snapshot(pre_snap.text or ""),
+                "snapshot": pre_snap.text or "",
+            }
 
-        # 解析 snapshot 里的交互元素（行格式：- type "label" [ref=xxx]）
-        text = snap.text or ""
-        interactive = []
-        for line in text.splitlines():
-            m = re.match(r'-\s+(\S+)\s+"([^"]*)"\s+\[ref=(\S+)\]', line.strip())
-            if m:
-                etype, label, ref = m.group(1), m.group(2), m.group(3)
-                interactive.append({"type": etype, "label": label, "ref": ref})
+        pre_cls = _classify(result["pre"].get("interactive", []))
+        has_login_form = bool(pre_cls["username"] and pre_cls["password"] and pre_cls["login_btn"])
 
-        return {"url": url, "title": "", "interactive": interactive, "snapshot": text}
+        if has_login_form and username and password:
+            print(f"  🔑 探测到登录表单，自动填账号密码登录…")
+
+            user_ref = pre_cls["username"][0]["ref"]
+            pass_ref = pre_cls["password"][0]["ref"]
+            btn_ref = pre_cls["login_btn"][0]["ref"]
+
+            # 填账号密码
+            fill = await bridge.call("browser_fill_form", {
+                "fields": [
+                    {"target": user_ref, "name": "Username", "type": "textbox", "value": username},
+                    {"target": pass_ref, "name": "Password", "type": "textbox", "value": password},
+                ]
+            })
+            if fill.is_error:
+                print(f"  ⚠️ 填表失败：{fill.text[:100]}")
+
+            # 点登录
+            click = await bridge.call("browser_click", {"ref": btn_ref})
+            if click.is_error:
+                # 可能需要重新找按钮 ref
+                print(f"  ⚠️ 点击登录按钮失败：{click.text[:100]}")
+
+            # 等页面跳转
+            await bridge.call("browser_wait_for", {"time": 3})
+
+            # 3. 登录后探测
+            post_snap = await bridge.call("browser_snapshot", {})
+            if not post_snap.is_error:
+                result["post"] = {
+                    "interactive": _parse_snapshot(post_snap.text or ""),
+                    "snapshot": post_snap.text or "",
+                }
+
+            # 拿当前 URL
+            eval_result = await bridge.call("browser_evaluate", {"script": "location.href"})
+            if not eval_result.is_error and eval_result.text:
+                result["after_url"] = eval_result.text.strip().strip('"')
+
+            print(f"  ✅ 登录后 URL: {result['after_url'] or '(同上)'}")
+            n = len(result["post"].get("interactive", []))
+            print(f"  📋 登录后发现 {n} 个交互元素")
+        else:
+            if not has_login_form:
+                print("  ℹ️ 未探测到登录表单（可能已是登录态或页面本身不需要登录）")
+            else:
+                print("  ℹ️ 跳过自动登录（未填账号密码）")
+
     finally:
         await bridge.close()
 
+    return result
+
 
 def _classify(elements: list[dict]) -> dict:
-    """把交互元素分类：登录框 / 表单 / 导航按钮 / 其他。"""
-    result = {"username": [], "password": [], "login_btn": [], "forms": [], "nav": [], "other": []}
+    """把交互元素分类：登录框 / 表单 / 导航按钮 / 业务按钮 / 其他。"""
+    result = {
+        "username": [], "password": [], "login_btn": [],
+        "nav": [], "biz_btn": [], "form_fields": [], "other": [],
+    }
     for e in elements:
         label = e["label"].lower()
         etype = e["type"].lower()
-        if etype == "textbox" and ("user" in label or "name" in label or "账号" in label):
+
+        if etype == "textbox" and ("user" in label or "账号" in label):
             result["username"].append(e)
         elif etype == "textbox" and ("pass" in label or "密码" in label):
             result["password"].append(e)
-        elif etype in ("button", "submit") and ("login" in label or "sign" in label or "登录" in label):
+        elif etype in ("button", "submit") and any(k in label for k in ("login", "sign in", "signin", "登录", "确定")):
             result["login_btn"].append(e)
-        elif etype in ("button", "submit") and etype in ("textbox",):
-            result["forms"].append(e)
-        elif etype in ("link", "button") and any(k in label for k in ("dashboard", "home", "homepage", "仪表盘", "首页")):
+        elif etype in ("link", "button") and any(k in label for k in ("dashboard", "home", "homepage", "仪表盘", "首页", "退出", "logout")):
             result["nav"].append(e)
+        elif etype in ("button", "link") and any(k in label for k in ("create", "新建", "创建", "add", "新增", "save", "保存", "submit", "提交", "删除", "delete", "编辑", "edit")):
+            result["biz_btn"].append(e)
+        elif etype == "textbox":
+            result["form_fields"].append(e)
         else:
             result["other"].append(e)
     return result
 
 
-def _print_discover(disc: dict):
+def _print_discover(disc: dict, phase: str = "登录前"):
     """漂亮打印探测结果。"""
-    if not disc:
+    interactive = disc.get("interactive", [])
+    if not interactive:
         return
-    print(f"\n🌐 探测：{disc['url']}")
-    print(f"📋 共 {len(disc['interactive'])} 个可交互元素\n")
-    cls = _classify(disc["interactive"])
 
+    cls = _classify(interactive)
+
+    print(f"\n📁 {phase}页面（{len(interactive)} 个交互元素）")
     groups = [
-        ("登录相关", cls["username"] + cls["password"] + cls["login_btn"]),
-        ("表单字段", cls["forms"]),
-        ("导航/菜单", cls["nav"]),
-        ("其他", cls["other"][:15]),
+        ("🔐 登录相关", cls["username"] + cls["password"] + cls["login_btn"]),
+        ("🗂️ 导航/菜单", cls["nav"]),
+        ("⚡ 业务按钮", cls["biz_btn"]),
+        ("📝 表单字段", cls["form_fields"]),
+        ("其他", cls["other"][:10]),
     ]
     for gname, items in groups:
         if not items:
             continue
-        print(f"  📁 {gname}（{len(items)}）")
-        for e in items:
-            print(f"    {e['type']:12s}  \"{e['label']}\"  [ref={e['ref']}]")
-        print()
+        print(f"  {gname}：")
+        for e in items[:8]:
+            print(f"    {e['type']:12s} \"{e['label']}\" [ref={e['ref']}]")
+        if len(items) > 8:
+            print(f"    … 还有 {len(items) - 8} 个")
 
 
-def _build_login_case(disc: dict, username: str, password: str) -> Case | None:
-    """根据探测结果 + 用户输入，自动构造登录 case。"""
-    cls = _classify(disc["interactive"])
-    if not cls["username"] or not cls["password"] or not cls["login_btn"]:
-        return None
+def _build_suite_yaml(
+    base_url: str, username: str, password: str,
+    post_cls: dict | None = None,
+) -> str:
+    """生成 suite.yaml。"""
+    safe_name = base_url.rstrip("/").replace("https://", "").replace("http://", "").split("/")[0]
 
-    return Case(
-        name="登录冒烟",
-        url=disc["url"],
-        instruction=(
-            f"用 {username} / {password} 登录。\n"
-            f"1. 填充用户名和密码\n"
-            f"2. 点击登录按钮\n"
-            f"3. 确认登录成功（URL 跳转或页面出现退出按钮/用户信息）\n"
-            f"4. 截图留证"
-        ),
-        assertions=[
-            "登录后 URL 变化",
-            "页面出现退出按钮或用户信息",
-        ],
-        timeout_s=1800,
-    )
-
-
-def _build_suite_yaml(url: str, username: str, password: str, app_url_placeholder: str = "{{app_url}}") -> str:
-    """生成最小可用的 suite.yaml 骨架。"""
-    # 如果用户 URL 包含敏感信息（localhost/内网 IP），app_url 直接用
-    actual_url = url if url.startswith("http") else app_url_placeholder
+    # 自动从登录后探测生成业务流程建议
+    biz_todos = []
+    if post_cls:
+        if post_cls["biz_btn"]:
+            biz_labels = ", ".join(f'"{e["label"]}"' for e in post_cls["biz_btn"][:4])
+            biz_todos.append(f"  # 登录后发现业务按钮：{biz_labels}")
+            biz_todos.append("  # 可以考虑加 '创建→编辑→删除' 流程")
+        if post_cls["nav"]:
+            nav_labels = ", ".join(f'"{e["label"]}"' for e in post_cls["nav"][:4])
+            biz_todos.append(f"  # 导航菜单：{nav_labels}")
+            biz_todos.append("  # 可以考虑加 '各菜单页面跳转不报错' 流程")
 
     return f"""# TestAgent 用例集（stagent init 自动生成）
-name: {url.rstrip('/').replace('https://', '').replace('http://', '')} 回归测试
-app_url: "{actual_url}"
+name: {safe_name} 回归测试
+app_url: "{base_url}"
 standard_username: "{username}"
 standard_password: "{password}"
 
 cases:
   # ── 登录冒烟（自动生成）──
   - name: "登录冒烟"
-    url: {actual_url}
+    url: {base_url}
     instruction: |
       用 {username} / {password} 登录。
       步骤：
-      1. 打开 {actual_url}
+      1. 打开 {base_url}
       2. 填充用户名和密码
       3. 点击登录
       4. 确认登录成功（URL 跳转 / 出现退出按钮 / 出现用户信息）
@@ -149,29 +221,27 @@ cases:
       - "页面出现退出按钮或用户信息"
     timeout_s: 1800
 
-  # ── TODO：你的业务流程（手动补）──
-  # - name: "创建流程"
-  #   url: {actual_url}
+  # ── TODO：业务流程（手动补）──
+{chr(10).join(biz_todos) if biz_todos else "  # 根据实际探测结果手动补业务流程"}
+  # - name: "创建→编辑→删除"
+  #   url: {base_url}
   #   instruction: |
   #     1. 登录
   #     2. 点击"创建"按钮
-  #     3. 填写表单
-  #     4. 提交
-  #     5. 确认创建成功
+  #     3. 填写表单并提交
+  #     4. 点击"编辑"修改字段
+  #     5. 提交并确认生效
+  #     6. 删除并确认列表更新
   #   assertions:
-  #     - "页面出现创建成功提示"
-  #     - "列表页出现新记录"
+  #     - "创建后列表出现新记录"
+  #     - "编辑后字段值更新"
+  #     - "删除后列表不再出现该记录"
   #   timeout_s: 1800
-  #
-  # - name: "编辑流程"
-  #   url: {actual_url}
-  #   ...
 """
 
 
 def _build_config_yaml(url: str, username: str, password: str) -> str:
     """生成 config.yaml（留空 LLM 字段让用户填）。"""
-    # 内网 HTTPS 大概率自签名，自动帮用户加 --ignore-https-errors
     is_internal_https = url.startswith("https://") and (
         "localhost" in url
         or "127.0.0.1" in url
@@ -206,10 +276,9 @@ browser:
 
 
 async def cmd_init(args: argparse.Namespace) -> int:
-    """init 主流程。"""
+    """init 主流程：探测 → 自动登录 → 生成 suite + config。"""
     url = args.url
-    # 防止用户粘贴两次 https://
-    url = re.sub(r'^(https?://)+', 'https://', url)
+    url = re.sub(r'^(https?://)+', 'https://', url)  # 防用户粘贴两次 https://
     out_dir = Path(args.dir).resolve()
     yes = args.yes
 
@@ -221,76 +290,73 @@ async def cmd_init(args: argparse.Namespace) -> int:
     print(f"🌐 目标：{url}")
     print(f"📁 输出目录：{out_dir}")
 
-    # Step 1: 探测页面（load_config 而不是 Config()）
-    print("\n── Step 1: 探测页面可交互元素 ──")
+    # URL 防自签名证书
     cfg = load_config()
-    # 内网 HTTPS 大概率自签名，自动注入 --ignore-https-errors
     if url.startswith("https://") and (
-        "localhost" in url
-        or "127.0.0.1" in url
+        "localhost" in url or "127.0.0.1" in url
         or re.match(r"https://\d+\.\d+\.\d+\.\d+", url)
     ):
         print("  💡 检测到内网 HTTPS，自动忽略 SSL 自签名证书错误")
         if "--ignore-https-errors" not in cfg.browser.extra_args:
             cfg.browser.extra_args.append("--ignore-https-errors")
-    disc = await _discover(cfg, url)
-    if not disc:
-        print("\n❌ 探测失败。可能原因：")
-        print("   - URL 打不开")
-        print("   - 页面需要登录才能看到内容")
-        print("   - 浏览器/LLM 未配置")
-        return 1
 
-    _print_discover(disc)
-
-    # Step 2: 收集账号密码
-    cls = _classify(disc["interactive"])
-    if cls["username"] and cls["password"] and cls["login_btn"]:
-        print("── Step 2: 填写测试账号 ──")
-        if yes:
-            username = args.username or "admin"
-            password = args.password or "admin"
-            print(f"  username: {username}")
-            print(f"  password: {password}")
-        else:
-            username = input("  测试账号 [admin]: ").strip() or "admin"
-            password = input("  测试密码 [admin]: ").strip() or "admin"
+    # Step 1: 收集账号密码
+    print(f"\n── Step 1: 测试账号 ──")
+    if yes:
+        username = args.username or "admin"
+        password = args.password or "admin"
+        print(f"  username: {username}")
+        print(f"  password: {password}")
     else:
-        username = args.username or ""
-        password = args.password or ""
-        print("\n⚠️  未检测到登录表单，跳过账号配置。")
+        username = (args.username or input("  测试账号 [admin]: ") or "admin").strip()
+        password = (args.password or input("  测试密码 [admin]: ") or "admin").strip()
+
+    # Step 2: 探测 + 自动登录
+    print(f"\n── Step 2: 探测页面 + 自动登录 ──")
+    disc = await _auto_login_and_discover(cfg, url, username, password)
+
+    _print_discover(disc.get("pre", {}), "登录前")
+    if disc.get("post"):
+        _print_discover(disc["post"], "登录后")
 
     # Step 3: 生成文件
     print(f"\n── Step 3: 生成文件到 {out_dir} ──")
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    base_url = disc.get("after_url") or url
+    post_cls = _classify(disc.get("post", {}).get("interactive", [])) if disc.get("post") else None
+
     suite_path = out_dir / "suite.yaml"
     config_path = out_dir / "config.yaml"
 
-    suite_path.write_text(_build_suite_yaml(url, username, password), encoding="utf-8")
+    suite_path.write_text(
+        _build_suite_yaml(base_url, username, password, post_cls), encoding="utf-8"
+    )
     config_path.write_text(_build_config_yaml(url, username, password), encoding="utf-8")
 
     print(f"  ✅ {suite_path}")
     print(f"  ✅ {config_path}")
 
-    # Step 4: 打印下一步
-    print("\n── Step 4: 下一步 ──")
+    # Step 4: 下一步
+    print(f"\n── Step 4: 下一步 ──")
     print(f"  1. 填 config.yaml 里的 LLM 配置")
     print(f"     (或用环境变量 STAGENT_BASE_URL / STAGENT_MODEL / STAGENT_API_KEY)")
     print(f"  2. 跑登录冒烟：")
     print(f"     cd {out_dir}")
     print(f"     python -m stagent run suite.yaml --config config.yaml")
     print(f"\n  3. 报告在：{out_dir}/artifacts/runs/<时间戳>/report.html")
+    print(f"\n  💡 登录后业务流程建议已自动写入 suite.yaml 的 TODO 注释")
+    print(f"     补完后再跑全量回归")
     print(f"\n🎉 init 完成！\n")
     return 0
 
 
 def add_init_parser(sub: argparse._SubParsersAction):
     """注册 init 子命令。"""
-    p = sub.add_parser("init", help="交互式向导：探测页面 → 生成 suite.yaml + config.yaml")
+    p = sub.add_parser("init", help="交互式向导：探测页面 → 自动登录 → 生成 suite.yaml + config.yaml")
     p.add_argument("--url", required=True, help="目标地址，例如 https://www.google.com")
     p.add_argument("--dir", default="./", help="输出目录（默认当前目录）")
-    p.add_argument("--username", default="", help="测试账号（可自动探测）")
-    p.add_argument("--password", default="", help="测试密码")
+    p.add_argument("--username", default="", help="测试账号（默认 admin）")
+    p.add_argument("--password", default="", help="测试密码（默认 admin）")
     p.add_argument("--yes", "-y", action="store_true", help="跳过交互，用默认值")
     return p

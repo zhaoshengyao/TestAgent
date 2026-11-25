@@ -116,7 +116,7 @@ async def _auto_login_and_discover(
             if menu_items:
                 print(f"  🔍 遍历 {len(menu_items)} 个顶级菜单，探测子页面业务元素…")
                 result["sub_pages"] = []
-                for menu in menu_items:
+                for idx, menu in enumerate(menu_items):
                     try:
                         # 点菜单
                         click_r = await bridge.call(
@@ -124,23 +124,29 @@ async def _auto_login_and_discover(
                             {"element": menu["label"], "target": menu["ref"]}
                         )
                         if click_r.is_error:
+                            print(f"    ⚠️ {menu['label']}: 点击失败 ({click_r.text[:60]})")
                             continue
                         await bridge.call("browser_wait_for", {"time": 2})
                         # snapshot
                         sub_snap = await bridge.call("browser_snapshot", {})
                         if sub_snap.is_error:
+                            print(f"    ⚠️ {menu['label']}: snapshot 失败")
                             continue
                         sub_interactive = _parse_snapshot(sub_snap.text or "")
                         sub_cls = _classify(sub_interactive)
                         biz_count = len(sub_cls["biz_btn"])
                         if biz_count > 0:
                             print(f"    ✅ {menu['label']}: 发现 {biz_count} 个业务按钮！")
+                            btn_names = [b["label"] for b in sub_cls["biz_btn"][:5]]
+                            print(f"       例子: {', '.join(btn_names)}")
                             result["sub_pages"].append({
                                 "menu": menu["label"],
                                 "interactive": sub_interactive,
                                 "biz_btn": sub_cls["biz_btn"],
                                 "menu_items": sub_cls["menu"],
                             })
+                        else:
+                            print(f"    · {menu['label']}: 无业务按钮 ({len(sub_interactive)} 元素)")
                         # 点完回首页（点第一个 menu 或 navigate）
                         await bridge.call(
                             "browser_navigate",

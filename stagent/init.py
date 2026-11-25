@@ -303,9 +303,9 @@ def _build_suite_yaml(
 
     # 2. 根据探测到的业务按钮自动生成（综合首页 + 子页面）
     if post_cls or all_biz:
-        has_create = any(k in e["label"].lower() for k in ("create", "新建", "创建", "add", "新增", "添加")) for e in all_biz)
-        has_edit = any(k in e["label"].lower() for k in ("edit", "编辑", "修改", "update")) for e in all_biz)
-        has_delete = any(k in e["label"].lower() for k in ("delete", "删除", "remove", "移除")) for e in all_biz)
+        has_create = any(any(k in e["label"].lower() for k in ("create", "新建", "创建", "add", "新增", "添加")) for e in all_biz)
+        has_edit = any(any(k in e["label"].lower() for k in ("edit", "编辑", "修改", "update")) for e in all_biz)
+        has_delete = any(any(k in e["label"].lower() for k in ("delete", "删除", "remove", "移除")) for e in all_biz)
         nav_labels = [e["label"] for e in all_menus]
 
         # 找业务按钮在哪个菜单里

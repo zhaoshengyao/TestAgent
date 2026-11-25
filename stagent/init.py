@@ -118,10 +118,21 @@ async def _auto_login_and_discover(
                 result["sub_pages"] = []
                 for idx, menu in enumerate(menu_items):
                     try:
-                        # 点菜单
+                        # 点菜单——优先用 label 重新找 ref，因为回首页后 DOM 可能刷新
+                        current_ref = menu["ref"]
+                        if idx > 0:  # 第一个菜单后 DOM 肯定变了
+                            snap = await bridge.call("browser_snapshot", {})
+                            if not snap.is_error:
+                                # 在新 snapshot 里按 label 找 menu 的新 ref
+                                new_elems = _parse_snapshot(snap.text or "")
+                                for e in new_elems:
+                                    if e.get("label") == menu["label"] and e.get("type") in ("menuitem", "link", "button"):
+                                        current_ref = e["ref"]
+                                        break
+
                         click_r = await bridge.call(
                             "browser_click",
-                            {"element": menu["label"], "target": menu["ref"]}
+                            {"element": menu["label"], "target": current_ref}
                         )
                         if click_r.is_error:
                             print(f"    ⚠️ {menu['label']}: 点击失败 ({click_r.text[:60]})")

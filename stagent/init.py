@@ -305,21 +305,13 @@ def _build_suite_yaml(
     post_cls: dict | None = None,
     sub_pages: list[dict] | None = None,
 ) -> str:
-    """生成 suite.yaml——同时看首页和子页面的探测结果。"""
+    """生成 suite.yaml——遍历每个子页面的实际业务按钮。"""
     safe_name = base_url.rstrip("/").replace("https://", "").replace("http://", "").split("/")[0]
 
     cases = []
-    all_biz = list(post_cls.get("biz_btn", [])) if post_cls else []
     all_menus = list(post_cls.get("menu", [])) if post_cls else []
-    sub_page_info = []  # (menu_label, biz_btn_labels)
-    if sub_pages:
-        for sp in sub_pages:
-            biz_labels = [b["label"] for b in sp.get("biz_btn", [])]
-            if biz_labels:
-                all_biz.extend(sp.get("biz_btn", []))
-                sub_page_info.append((sp["menu"], biz_labels))
 
-    # 1. 登录冒烟（必生成）
+    # 1. 登录冒烟
     cases.append(f"""  - name: "登录冒烟"
     url: {base_url}
     instruction: |
@@ -328,7 +320,7 @@ def _build_suite_yaml(
       1. 打开 {base_url}
       2. 填充用户名和密码
       3. 点击登录
-      4. 确认登录成功（URL 跳转 / 出现退出按钮 / 出现用户信息）
+      4. 确认登录成功（URL 跳转 / 出现退出按钮）
       5. 截图
     assertions:
       - "登录后 URL 变化（跳转到非登录页）"
@@ -336,23 +328,9 @@ def _build_suite_yaml(
     timeout_s: 1800
 """)
 
-    # 2. 根据探测到的业务按钮自动生成（综合首页 + 子页面）
-    if post_cls or all_biz:
-        has_create = any(any(k in e["label"].lower() for k in ("create", "新建", "创建", "add", "新增", "添加")) for e in all_biz)
-        has_edit = any(any(k in e["label"].lower() for k in ("edit", "编辑", "修改", "update")) for e in all_biz)
-        has_delete = any(any(k in e["label"].lower() for k in ("delete", "删除", "remove", "移除")) for e in all_biz)
-        nav_labels = [e["label"] for e in all_menus]
-
-        # 找业务按钮在哪个菜单里
-        def biz_in_menu(keyword: str) -> str:
-            for menu, btns in sub_page_info:
-                if any(keyword in b.lower() or keyword in b for b in btns):
-                    return menu
-            return ""
-
-        # 2a. 菜单冒烟——遍历所有顶级菜单
-        for menu_label in nav_labels[:10]:
-            cases.append(f"""  - name: "菜单冒烟：{menu_label}"
+    # 2. 菜单冒烟——遍历所有顶级菜单
+    for menu_label in [e["label"] for e in all_menus][:10]:
+        cases.append(f"""  - name: "菜单冒烟：{menu_label}"
     url: {base_url}
     instruction: |
       1. 用 {username} / {password} 登录
@@ -364,73 +342,55 @@ def _build_suite_yaml(
     timeout_s: 1800
 """)
 
-        # 2b. 创建流程（带菜单导航步骤）
-        if has_create:
-            action_label = next((b["label"] for b in all_biz if "创建" in b["label"] or "新建" in b["label"] or "新增" in b["label"] or "create" in b["label"].lower() or "add" in b["label"].lower()), "创建")
-            menu_hint = biz_in_menu("创建") or biz_in_menu("新建") or biz_in_menu("新增")
-            nav_step = f"      2. 点击左侧/顶部导航的「{menu_hint}」\n" if menu_hint else ""
-            cases.append(f"""  - name: "{action_label}流程"
-    url: {base_url}
-    instruction: |
-      1. 用 {username} / {password} 登录
-{nav_step}      {'3' if menu_hint else '2'}. 点击「{action_label}」按钮
-      {'4' if menu_hint else '3'}. 逐个填写表单里的所有输入框（填合理的测试数据）
-      {'5' if menu_hint else '4'}. 点击提交/保存
-      {'6' if menu_hint else '5'}. 确认创建成功（URL 跳转 / 成功提示 / 列表出现新记录）
-    assertions:
-      - "创建后出现成功提示或 URL 变化"
-      - "列表/详情页出现刚创建的记录"
-    timeout_s: 1800
-""")
+    # 3. 按 sub_pages 生成业务流程——每个子页面的每个业务按钮
+    if sub_pages:
+        for sp in sub_pages:
+            menu_label = sp["menu"]
+            biz_btns = sp.get("biz_btn", [])
+            seen_labels = set()
+            for btn in biz_btns:
+                btn_label = btn["label"]
+                if btn_label in seen_labels:
+                    continue
+                seen_labels.add(btn_label)
 
-        # 2c. 编辑流程
-        if has_edit:
-            cases.append(f"""  - name: "编辑流程"
+                # 按按钮类型选 instruction 模板
+                label_lower = btn_label.lower()
+                if any(k in label_lower for k in ("搜索", "查询", "筛选", "search", "filter")):
+                    step_desc = "输入查询条件后点击搜索"
+                    assert_desc = "查询结果正确显示"
+                elif any(k in label_lower for k in ("导出", "下载", "export", "download", "打印", "preview", "预览")):
+                    step_desc = "点击按钮触发导出/下载"
+                    assert_desc = "文件成功生成 / 下载开始"
+                elif any(k in label_lower for k in ("核销", "审批", "审核", "approve")):
+                    step_desc = "选择一条记录后点击按钮"
+                    assert_desc = "操作成功（状态变化 / 成功提示）"
+                elif any(k in label_lower for k in ("付款", "收款", "支付")):
+                    step_desc = "选择记录 → 填写金额 → 确认操作"
+                    assert_desc = "付款/收款成功"
+                elif any(k in label_lower for k in ("登记", "录入")):
+                    step_desc = "填写表单 → 提交登记"
+                    assert_desc = "登记成功（列表出现新记录 / 成功提示）"
+                else:
+                    step_desc = "点击按钮 → 填写表单（如有）→ 提交/确认"
+                    assert_desc = "操作成功（状态变化 / 成功提示 / URL 变化）"
+
+                cases.append(f"""  - name: "【{menu_label}】{btn_label}"
     url: {base_url}
     instruction: |
       1. 用 {username} / {password} 登录
-      2. 在列表页找到第一条记录，点击「编辑」
-      3. 修改任意一个字段（比如改名称/改备注）
-      4. 保存
-      5. 确认编辑生效（字段值已更新）
+      2. 点击左侧/顶部导航的「{menu_label}」
+      3. {step_desc}
+      4. 确认操作结果
     assertions:
-      - "保存后编辑生效"
+      - "{assert_desc}"
       - "没有报错"
     timeout_s: 1800
 """)
 
-        # 2d. 删除流程
-        if has_delete:
-            cases.append(f"""  - name: "删除流程"
-    url: {base_url}
-    instruction: |
-      1. 用 {username} / {password} 登录
-      2. 在列表页找到要删除的记录，点击「删除」
-      3. 如果有确认弹窗，点击确认
-      4. 确认删除成功（列表不再出现该记录）
-    assertions:
-      - "删除成功"
-      - "列表页不再出现该记录"
-    timeout_s: 1800
-""")
-
-    # 3. fallback——啥业务按钮都没探测到，给个模板
-    if len(cases) == 1:
-        cases.append("""  # ── TODO：补充业务流程 ──
-  # init 没探测到明显的业务按钮（创建/编辑/删除等），
-  # 可能需要先点进某个子菜单才能看到。手动补完后跑全量：
-  #   python -m stagent run suite.yaml --config config.yaml
-  #
-  # - name: "完整业务流程"
-  #   url: """ + f'"{base_url}"' + """
-  #   instruction: |
-  #     1. 登录
-  #     2. 走一遍你们的核心业务链路
-  #     3. 确认最终状态正确
-  #   assertions:
-  #     - "核心流程走通"
-  #   timeout_s: 1800
-""")
+    # 4. fallback
+    if len(cases) <= 1:
+        cases.append('  # ── TODO：补充业务流程 ──')
 
     return f"""# TestAgent 用例集（stagent init 自动生成）
 name: {safe_name} 回归测试

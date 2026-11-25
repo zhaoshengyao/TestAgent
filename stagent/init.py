@@ -146,9 +146,18 @@ async def _auto_login_and_discover(
                             {"url": result["after_url"] or url}
                         )
                         await bridge.call("browser_wait_for", {"time": 1})
-                    except Exception as e:
-                        print(f"    ⚠️ 遍历 {menu['label']} 失败：{str(e)[:80]}")
-                        continue
+                        except Exception as e:
+                            print(f"    ⚠️ 遍历 {menu['label']} 失败：{str(e)[:80]}")
+                            continue
+
+                total_sub = len(result.get("sub_pages", []))
+                if total_sub == 0:
+                    print(f"    ℹ️ 遍历了 {len(menu_items)} 个菜单，但没发现 新建/编辑/删除 类按钮")
+                    print(f"       可能这些子页面用的是非标准命名，或需要更深层的二级菜单")
+                else:
+                    print(f"    ✨ 共发现 {total_sub} 个子页面有业务按钮")
+            else:
+                print(f"  ℹ️ 登录后没发现顶级菜单（menuitem 类型），跳过子页面遍历")
 
             # 拿当前 URL（MCP 返回的是完整 tool output，里面值在引号里）
             eval_result = await bridge.call(

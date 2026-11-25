@@ -74,3 +74,47 @@ cases:
       - "点击「成本构成」后页面正常加载"
       - "没有报错或空白"
     timeout_s: 1800
+
+  - name: "菜单冒烟：合同中心"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「合同中心」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「合同中心」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：财务工作台"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「财务工作台」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「财务工作台」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：超级管理员 Workspace"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「超级管理员 Workspace」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「超级管理员 Workspace」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：财务工作台"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「财务工作台」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「财务工作台」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800

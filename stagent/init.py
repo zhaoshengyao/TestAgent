@@ -101,7 +101,7 @@ async def _auto_login_and_discover(
             # 等页面跳转
             await bridge.call("browser_wait_for", {"time": 3})
 
-            # 3. 登录后探测
+            # 3. 登录后探测（首页）
             post_snap = await bridge.call("browser_snapshot", {})
             if not post_snap.is_error:
                 result["post"] = {
@@ -109,13 +109,63 @@ async def _auto_login_and_discover(
                     "snapshot": post_snap.text or "",
                 }
 
-            # 拿当前 URL（MCP browser_evaluate 参数是 function，格式是箭头函数）
+            # 4. 遍历顶级菜单点进去再探测——业务按钮（创建/编辑/删除）通常在子页面
+            post_cls = _classify(result["post"].get("interactive", []))
+            menu_items = post_cls.get("menu", [])[:5]  # 最多遍历 5 个菜单
+            if menu_items:
+                print(f"  🔍 遍历 {len(menu_items)} 个顶级菜单，探测子页面业务元素…")
+                result["sub_pages"] = []
+                for menu in menu_items:
+                    try:
+                        # 点菜单
+                        click_r = await bridge.call(
+                            "browser_click",
+                            {"element": menu["label"], "target": menu["ref"]}
+                        )
+                        if click_r.is_error:
+                            continue
+                        await bridge.call("browser_wait_for", {"time": 2})
+                        # snapshot
+                        sub_snap = await bridge.call("browser_snapshot", {})
+                        if sub_snap.is_error:
+                            continue
+                        sub_interactive = _parse_snapshot(sub_snap.text or "")
+                        sub_cls = _classify(sub_interactive)
+                        biz_count = len(sub_cls["biz_btn"])
+                        if biz_count > 0:
+                            print(f"    ✅ {menu['label']}: 发现 {biz_count} 个业务按钮！")
+                            result["sub_pages"].append({
+                                "menu": menu["label"],
+                                "interactive": sub_interactive,
+                                "biz_btn": sub_cls["biz_btn"],
+                                "menu_items": sub_cls["menu"],
+                            })
+                        # 点完回首页（点第一个 menu 或 navigate）
+                        await bridge.call(
+                            "browser_navigate",
+                            {"url": result["after_url"] or url}
+                        )
+                        await bridge.call("browser_wait_for", {"time": 1})
+                    except Exception as e:
+                        print(f"    ⚠️ 遍历 {menu['label']} 失败：{str(e)[:80]}")
+                        continue
+
+            # 拿当前 URL（MCP 返回的是完整 tool output，里面值在引号里）
             eval_result = await bridge.call(
                 "browser_evaluate",
                 {"function": "() => { return location.href; }"}
             )
             if not eval_result.is_error and eval_result.text:
-                result["after_url"] = eval_result.text.strip().strip('"').strip("'")
+                # browser_evaluate 返回格式是 "### Result\n\"值\"\n### Ran..."
+                m = re.search(r'"(https?://[^"\s]+)"', eval_result.text)
+                if m:
+                    result["after_url"] = m.group(1)
+                else:
+                    for line in eval_result.text.splitlines():
+                        line = line.strip()
+                        if line.startswith("http"):
+                            result["after_url"] = line.strip('"').strip("'")
+                            break
 
             print(f"  ✅ 登录后 URL: {result['after_url'] or '(同上)'}")
             n = len(result["post"].get("interactive", []))
@@ -218,11 +268,21 @@ def _print_discover(disc: dict, phase: str = "登录前"):
 def _build_suite_yaml(
     base_url: str, username: str, password: str,
     post_cls: dict | None = None,
+    sub_pages: list[dict] | None = None,
 ) -> str:
-    """生成 suite.yaml——根据探测到的业务按钮自动拼 Case 指令。"""
+    """生成 suite.yaml——同时看首页和子页面的探测结果。"""
     safe_name = base_url.rstrip("/").replace("https://", "").replace("http://", "").split("/")[0]
 
     cases = []
+    all_biz = list(post_cls.get("biz_btn", [])) if post_cls else []
+    all_menus = list(post_cls.get("menu", [])) if post_cls else []
+    sub_page_info = []  # (menu_label, biz_btn_labels)
+    if sub_pages:
+        for sp in sub_pages:
+            biz_labels = [b["label"] for b in sp.get("biz_btn", [])]
+            if biz_labels:
+                all_biz.extend(sp.get("biz_btn", []))
+                sub_page_info.append((sp["menu"], biz_labels))
 
     # 1. 登录冒烟（必生成）
     cases.append(f"""  - name: "登录冒烟"
@@ -241,39 +301,47 @@ def _build_suite_yaml(
     timeout_s: 1800
 """)
 
-    # 2. 根据探测到的业务按钮自动生成
-    if post_cls:
-        has_create = any("create" in e["label"].lower() or "新建" in e["label"] or "创建" in e["label"] or "add" in e["label"].lower() for e in post_cls["biz_btn"])
-        has_edit = any("edit" in e["label"].lower() or "编辑" in e["label"] for e in post_cls["biz_btn"])
-        has_delete = any("delete" in e["label"].lower() or "删除" in e["label"] for e in post_cls["biz_btn"])
-        has_save = any("save" in e["label"].lower() or "保存" in e["label"] or "submit" in e["label"].lower() or "提交" in e["label"] for e in post_cls["biz_btn"])
-        nav_labels = [e["label"] for e in post_cls["menu"]]
+    # 2. 根据探测到的业务按钮自动生成（综合首页 + 子页面）
+    if post_cls or all_biz:
+        has_create = any(k in e["label"].lower() for k in ("create", "新建", "创建", "add", "新增", "添加")) for e in all_biz)
+        has_edit = any(k in e["label"].lower() for k in ("edit", "编辑", "修改", "update")) for e in all_biz)
+        has_delete = any(k in e["label"].lower() for k in ("delete", "删除", "remove", "移除")) for e in all_biz)
+        nav_labels = [e["label"] for e in all_menus]
 
-        # 2a. 菜单冒烟——导航栏每个按钮点一遍
-        if nav_labels and any(k in " ".join(nav_labels).lower() for k in ("dashboard", "home", "仪表盘", "首页")):
-            cases.append(f"""  - name: "菜单冒烟：{nav_labels[0]}页能打开"
+        # 找业务按钮在哪个菜单里
+        def biz_in_menu(keyword: str) -> str:
+            for menu, btns in sub_page_info:
+                if any(keyword in b.lower() or keyword in b for b in btns):
+                    return menu
+            return ""
+
+        # 2a. 菜单冒烟——遍历所有顶级菜单
+        for menu_label in nav_labels[:5]:
+            cases.append(f"""  - name: "菜单冒烟：{menu_label}"
     url: {base_url}
     instruction: |
       1. 用 {username} / {password} 登录
-      2. 点击导航栏的「{nav_labels[0]}」
-      3. 确认页面加载成功（URL 跳转 / 页面有实际内容 / 没有 loading spinner）
+      2. 点击左侧/顶部导航的「{menu_label}」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
     assertions:
-      - "点击「{nav_labels[0]}」后页面正常加载"
-      - "没有报错或空页面"
+      - "点击「{menu_label}」后页面正常加载"
+      - "没有报错或空白"
     timeout_s: 1800
 """)
 
-        # 2b. 创建流程
+        # 2b. 创建流程（带菜单导航步骤）
         if has_create:
-            action = "创建" if any("创建" in e["label"] or "新建" in e["label"] for e in post_cls["biz_btn"]) else "Add"
-            cases.append(f"""  - name: "{action}流程"
+            action_label = next((b["label"] for b in all_biz if "创建" in b["label"] or "新建" in b["label"] or "新增" in b["label"] or "create" in b["label"].lower() or "add" in b["label"].lower()), "创建")
+            menu_hint = biz_in_menu("创建") or biz_in_menu("新建") or biz_in_menu("新增")
+            nav_step = f"      2. 点击左侧/顶部导航的「{menu_hint}」\n" if menu_hint else ""
+            cases.append(f"""  - name: "{action_label}流程"
     url: {base_url}
     instruction: |
       1. 用 {username} / {password} 登录
-      2. 点击「{action}」按钮
-      3. 逐个填写表单里的所有输入框（填合理的测试数据）
-      4. 点击提交/保存
-      5. 确认创建成功（URL 跳转 / 成功提示 / 列表出现新记录）
+{nav_step}      {'3' if menu_hint else '2'}. 点击「{action_label}」按钮
+      {'4' if menu_hint else '3'}. 逐个填写表单里的所有输入框（填合理的测试数据）
+      {'5' if menu_hint else '4'}. 点击提交/保存
+      {'6' if menu_hint else '5'}. 确认创建成功（URL 跳转 / 成功提示 / 列表出现新记录）
     assertions:
       - "创建后出现成功提示或 URL 变化"
       - "列表/详情页出现刚创建的记录"
@@ -429,7 +497,7 @@ async def cmd_init(args: argparse.Namespace) -> int:
     config_path = out_dir / "config.yaml"
 
     suite_path.write_text(
-        _build_suite_yaml(base_url, username, password, post_cls), encoding="utf-8"
+        _build_suite_yaml(base_url, username, password, post_cls, disc.get("sub_pages")), encoding="utf-8"
     )
     config_path.write_text(_build_config_yaml(url, username, password), encoding="utf-8")
 

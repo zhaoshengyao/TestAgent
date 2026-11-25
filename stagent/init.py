@@ -198,15 +198,24 @@ def _classify(elements: list[dict]) -> dict:
         "username": [], "password": [], "login_btn": [],
         "menu": [], "biz_btn": [], "form_fields": [], "other": [],
     }
-    # 业务按钮关键词（中英文混合）
+    # 业务按钮关键词（覆盖通用 + 财务/企业管理/HR 等垂直系统）
     BIZ_KEYWORDS = (
-        "create", "新建", "创建", "add", "新增", "添加", "新建",
-        "save", "保存", "submit", "提交", "确认",
-        "delete", "删除", "remove", "移除", "删除",
-        "edit", "编辑", "update", "修改", "编辑",
-        "导入", "export", "导出", "import",
-        "审核", "approve", "audit", "confirm",
-        "返回", "back", "取消", "cancel",
+        # 通用 CRUD
+        "create", "新建", "创建", "add", "新增", "添加", "新建", "建立",
+        "save", "保存", "submit", "提交", "确认", "确定",
+        "delete", "删除", "remove", "移除", "清理", "清空",
+        "edit", "编辑", "update", "修改", "变更", "更新",
+        "导入", "export", "导出", "import", "download", "upload",
+        # 审批流
+        "审核", "approve", "audit", "confirm", "审批", "通过", "驳回", "拒绝",
+        # 财务/企业管理
+        "录入", "登记", "核销", "分配", "调拨", "结转", "摊销", "计提",
+        "支付", "付款", "收款", "报销", "申请",
+        "查询", "搜索", "筛选", "query", "search", "filter",
+        "打印", "preview", "预览", "download",
+        "返回", "back", "取消", "cancel", "关闭",
+        # 导航类但算业务操作
+        "详情", "detail", "查看", "view",
     )
     # 导航关键词（通用）
     NAV_KEYWORDS = (

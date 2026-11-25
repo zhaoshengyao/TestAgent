@@ -1,32 +1,16 @@
 # TestAgent 用例集（stagent init 自动生成）
-name: ### Result
-"192.168.2.68:6088 回归测试
-app_url: "### Result
-"https://192.168.2.68:6088/index"
-### Ran Playwright code
-```js
-await page.evaluate('() => { return location.href; }');
-```"
+name: 192.168.2.68:6088 回归测试
+app_url: "https://192.168.2.68:6088/index"
 standard_username: "admin"
 standard_password: "admin123"
 
 cases:
   - name: "登录冒烟"
-    url: ### Result
-"https://192.168.2.68:6088/index"
-### Ran Playwright code
-```js
-await page.evaluate('() => { return location.href; }');
-```
+    url: https://192.168.2.68:6088/index
     instruction: |
       用 admin / admin123 登录。
       步骤：
-      1. 打开 ### Result
-"https://192.168.2.68:6088/index"
-### Ran Playwright code
-```js
-await page.evaluate('() => { return location.href; }');
-```
+      1. 打开 https://192.168.2.68:6088/index
       2. 填充用户名和密码
       3. 点击登录
       4. 确认登录成功（URL 跳转 / 出现退出按钮 / 出现用户信息）
@@ -36,22 +20,57 @@ await page.evaluate('() => { return location.href; }');
       - "页面出现退出按钮或用户信息"
     timeout_s: 1800
 
-  # ── TODO：补充业务流程 ──
-  # init 没探测到明显的业务按钮（创建/编辑/删除等），
-  # 可能需要先点进某个子菜单才能看到。手动补完后跑全量：
-  #   python -m stagent run suite.yaml --config config.yaml
-  #
-  # - name: "完整业务流程"
-  #   url: "### Result
-"https://192.168.2.68:6088/index"
-### Ran Playwright code
-```js
-await page.evaluate('() => { return location.href; }');
-```"
-  #   instruction: |
-  #     1. 登录
-  #     2. 走一遍你们的核心业务链路
-  #     3. 确认最终状态正确
-  #   assertions:
-  #     - "核心流程走通"
-  #   timeout_s: 1800
+  - name: "菜单冒烟：财务工作台"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「财务工作台」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「财务工作台」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：资金驾驶舱"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「资金驾驶舱」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「资金驾驶舱」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：项目资金台账"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「项目资金台账」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「项目资金台账」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：逾期账龄预警"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「逾期账龄预警」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「逾期账龄预警」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800
+
+  - name: "菜单冒烟：成本构成"
+    url: https://192.168.2.68:6088/index
+    instruction: |
+      1. 用 admin / admin123 登录
+      2. 点击左侧/顶部导航的「成本构成」
+      3. 确认页面加载成功（URL 跳转 / 页面有表格或卡片 / 没有 loading spinner）
+    assertions:
+      - "点击「成本构成」后页面正常加载"
+      - "没有报错或空白"
+    timeout_s: 1800

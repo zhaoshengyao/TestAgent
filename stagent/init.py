@@ -111,7 +111,7 @@ async def _auto_login_and_discover(
 
             # 4. 遍历顶级菜单点进去再探测——业务按钮（创建/编辑/删除）通常在子页面
             post_cls = _classify(result["post"].get("interactive", []))
-            menu_items = post_cls.get("menu", [])[:5]  # 最多遍历 5 个菜单
+            menu_items = post_cls.get("menu", [])[:10]  # 最多遍历 5 个菜单
             if menu_items:
                 print(f"  🔍 遍历 {len(menu_items)} 个顶级菜单，探测子页面业务元素…")
                 result["sub_pages"] = []
@@ -221,8 +221,8 @@ def _classify(elements: list[dict]) -> dict:
             or "submit" in label or "confirm" in label
         ):
             result["login_btn"].append(e)
-        # 导航：menuitem / navigation / 带业务系统关键词的 link/button
-        elif etype in ("menuitem", "navigation") or (
+        # 导航：menuitem 是顶级菜单；navigation 是面包屑/tab 等局部导航单独归 other
+        elif etype == "menuitem" or (
             etype in ("link", "button")
             and any(k in label for k in NAV_KEYWORDS)
         ):
@@ -316,7 +316,7 @@ def _build_suite_yaml(
             return ""
 
         # 2a. 菜单冒烟——遍历所有顶级菜单
-        for menu_label in nav_labels[:5]:
+        for menu_label in nav_labels[:10]:
             cases.append(f"""  - name: "菜单冒烟：{menu_label}"
     url: {base_url}
     instruction: |

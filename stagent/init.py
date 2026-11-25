@@ -146,9 +146,9 @@ async def _auto_login_and_discover(
                             {"url": result["after_url"] or url}
                         )
                         await bridge.call("browser_wait_for", {"time": 1})
-                        except Exception as e:
-                            print(f"    ⚠️ 遍历 {menu['label']} 失败：{str(e)[:80]}")
-                            continue
+                    except Exception as e:
+                        print(f"    ⚠️ 遍历 {menu['label']} 失败：{str(e)[:80]}")
+                        continue
 
                 total_sub = len(result.get("sub_pages", []))
                 if total_sub == 0:

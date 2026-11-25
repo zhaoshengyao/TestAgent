@@ -111,7 +111,8 @@ async def _auto_login_and_discover(
 
             # 4. 遍历顶级菜单点进去再探测——业务按钮（创建/编辑/删除）通常在子页面
             post_cls = _classify(result["post"].get("interactive", []))
-            menu_items = post_cls.get("menu", [])[:10]  # 最多遍历 5 个菜单
+            print(f"  🐛 DEBUG: post_cls keys={list(post_cls.keys())} menu_count={len(post_cls.get('menu', []))} total_interactive={len(result['post'].get('interactive', []))}")
+            menu_items = post_cls.get("menu", [])[:10]
             if menu_items:
                 print(f"  🔍 遍历 {len(menu_items)} 个顶级菜单，探测子页面业务元素…")
                 result["sub_pages"] = []

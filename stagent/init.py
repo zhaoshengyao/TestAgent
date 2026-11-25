@@ -246,16 +246,15 @@ def _classify(elements: list[dict]) -> dict:
             or "submit" in label or "confirm" in label
         ):
             result["login_btn"].append(e)
-        # 导航：menuitem 是顶级菜单；navigation 是面包屑/tab 等局部导航单独归 other
+        # 导航/菜单：menuitem 类型，或任何类型带导航关键词
         elif etype == "menuitem" or (
-            etype in ("link", "button")
-            and any(k in label for k in NAV_KEYWORDS)
+            any(k in label for k in NAV_KEYWORDS)
+            and etype not in ("textbox", "columnheader", "tab", "tabpanel")
         ):
             result["menu"].append(e)
-        # 业务按钮：任何类型（button/link/menuitem）带业务关键词
-        elif etype in ("button", "link", "menuitem") and any(
-            k in label for k in BIZ_KEYWORDS
-        ):
+        # 业务按钮：Vue/React SPA 的按钮可能是任何类型（div/a/span/element/generic），
+        # 所以只看关键词，不限制元素类型
+        if any(k in label for k in BIZ_KEYWORDS):
             result["biz_btn"].append(e)
         elif etype == "textbox":
             result["form_fields"].append(e)
